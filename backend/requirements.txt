@@ -1,0 +1,37 @@
+# FastAPI e dependências principais
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Validação e schemas
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Middleware e segurança
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Logging e monitoramento
+structlog==23.2.0
+
+# Utilitários
+python-dotenv==1.0.0
+email-validator==2.1.0
+
+# Async support
+aiofiles==23.2.1
+
+# Para integração com AD (opcional - para produção real)
+# ldap3==2.9.1
+# python-ldap==3.4.3
+
+# Desenvolvimento e testes
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+pytest-cov==4.1.0
+
+# Formatação e linting
+black==23.11.0
+flake8==6.1.0
+isort==5.12.0 

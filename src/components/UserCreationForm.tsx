@@ -95,8 +95,9 @@ export const UserCreationForm = () => {
     setIsLoading(true);
 
     try {
-      // Simular chamada da API (substituir pela integração real)
-      const response = await fetch('/api/users/create', {
+      // Chamada da API real do backend
+      const apiUrl = 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/v1/users/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,10 +105,12 @@ export const UserCreationForm = () => {
         body: JSON.stringify(formData),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
         toast({
           title: 'Usuário criado com sucesso!',
-          description: `A conta ${formData.loginName} foi criada no Active Directory.`,
+          description: data.message || `A conta ${formData.loginName} foi criada no Active Directory.`,
         });
 
         // Limpar formulário
@@ -118,12 +121,33 @@ export const UserCreationForm = () => {
           password: ''
         });
       } else {
-        throw new Error('Erro ao criar usuário');
+        // Trata diferentes tipos de erro
+        if (response.status === 409) {
+          toast({
+            title: 'Usuário já existe',
+            description: data.detail || 'Este nome de usuário já está em uso.',
+            variant: 'destructive',
+          });
+        } else if (response.status === 400) {
+          toast({
+            title: 'Dados inválidos',
+            description: data.detail || 'Verifique os dados inseridos.',
+            variant: 'destructive',
+          });
+        } else if (response.status === 503) {
+          toast({
+            title: 'Erro de conexão',
+            description: data.detail || 'Não foi possível conectar ao Active Directory.',
+            variant: 'destructive',
+          });
+        } else {
+          throw new Error(data.detail || 'Erro ao criar usuário');
+        }
       }
     } catch (error) {
       toast({
         title: 'Erro ao criar usuário',
-        description: 'Não foi possível criar o usuário no Active Directory. Tente novamente.',
+        description: error instanceof Error ? error.message : 'Não foi possível criar o usuário no Active Directory. Tente novamente.',
         variant: 'destructive',
       });
     } finally {

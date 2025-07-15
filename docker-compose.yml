@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Frontend - React Application
+  # =============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Backend - FastAPI Application
+  # =============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - BACKEND_CORS_ORIGINS=http://localhost:3000,https://localhost:3000
+      - AD_SERVER=${AD_SERVER:-ldap://localhost:389}
+      - AD_DOMAIN=${AD_DOMAIN:-example.local}
+      - AD_BASE_DN=${AD_BASE_DN:-DC=example,DC=local}
+      - AD_USERNAME=${AD_USERNAME:-admin}
+      - AD_PASSWORD=${AD_PASSWORD:-password}
+      - AD_USE_SSL=${AD_USE_SSL:-false}
+      - AD_USERS_OU=${AD_USERS_OU:-OU=Users,DC=example,DC=local}
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # =============================================================================
+  # Nginx - Reverse Proxy (Opcional para produção)
+  # =============================================================================
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+# =============================================================================
+# Volumes persistentes
+# =============================================================================
+volumes:
+  backend-data:
+    driver: local
+  backend-logs:
+    driver: local
+  nginx-logs:
+    driver: local
+
+# =============================================================================
+# Rede personalizada
+# =============================================================================
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

@@ -1,73 +1,219 @@
-# Welcome to your Lovable project
+# AD User Creator - Sistema Completo
 
-## Project info
+Sistema completo para criação de usuários no Active Directory com frontend React e backend FastAPI.
 
-**URL**: https://lovable.dev/projects/957a437f-41d2-401c-9948-d1cc8b340459
+## 🚀 Características
 
-## How can I edit this code?
+### Frontend
+- **Interface Moderna**: React 18 com TypeScript e Tailwind CSS
+- **Validação em Tempo Real**: Validação de formulários robusta
+- **Sugestões de Username**: Geração automática de nomes de usuário
+- **Design Responsivo**: Interface adaptável para mobile e desktop
+- **Componentes Reutilizáveis**: Baseados em Radix UI
 
-There are several ways of editing your application.
+### Backend
+- **API REST**: FastAPI com documentação automática
+- **Validação Robusta**: Schemas Pydantic para validação de dados
+- **Simulação de AD**: Serviço simulado para demonstração
+- **Logging Estruturado**: Sistema de logs completo
+- **Tratamento de Erros**: Tratamento personalizado de exceções
+- **Segurança**: Middleware de segurança e CORS configurado
 
-**Use Lovable**
+### Infraestrutura
+- **Docker**: Containerização completa com multi-stage builds
+- **Docker Compose**: Orquestração de serviços para dev e produção
+- **Nginx**: Reverse proxy com cache e compressão
+- **Health Checks**: Monitoramento de saúde dos serviços
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/957a437f-41d2-401c-9948-d1cc8b340459) and start prompting.
+## 🛠️ Stack Tecnológica
 
-Changes made via Lovable will be committed automatically to this repo.
+### Frontend
+- React 18 + TypeScript + Vite
+- Tailwind CSS + Radix UI
+- React Query + React Router
+- Lucide React (ícones)
 
-**Use your preferred IDE**
+### Backend
+- FastAPI + Python 3.11
+- Pydantic + Uvicorn
+- Logging estruturado
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### DevOps
+- Docker + Docker Compose
+- Nginx + Multi-stage builds
+- Health checks + Monitoring
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## 📋 Pré-requisitos
 
-Follow these steps:
+- Docker & Docker Compose
+- Node.js 18+ (para desenvolvimento local)
+- Python 3.11+ (para desenvolvimento local)
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## 🚀 Início Rápido
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Usando Docker (Recomendado)
 
-# Step 3: Install the necessary dependencies.
-npm i
+1. **Clone o repositório:**
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+git clone <repository-url>
+cd ad-user-creator-web
+
+
+2. **Inicie os serviços:**
+
+# Produção
+make up
+
+# Desenvolvimento
+make up-dev
+
+
+3. **Acesse a aplicação:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- Documentação: http://localhost:8000/api/v1/docs
+
+### Desenvolvimento Local
+
+1. **Backend:**
+
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+
+2. **Frontend:**
+
+npm install
 npm run dev
+
+
+## 📡 Endpoints da API
+
+### Usuários
+- `POST /api/v1/users/create` - Criar usuário
+- `GET /api/v1/users/exists/{login_name}` - Verificar existência
+- `GET /api/v1/users/info/{login_name}` - Obter informações
+- `POST /api/v1/users/validate-password` - Validar senha
+- `GET /api/v1/users/suggest-username/{first_name}/{last_name}` - Sugerir nome
+
+### Sistema
+- `GET /health` - Health check
+- `GET /api/v1/docs` - Documentação Swagger
+
+## 🔧 Configuração
+
+Copie `env.example` para `.env` e configure:
+
+
+# Backend
+ENVIRONMENT=development
+SECRET_KEY=your-secret-key
+AD_SERVER=ldap://localhost:389
+AD_DOMAIN=example.local
+
+# Frontend
+REACT_APP_API_URL=http://localhost:8000
+
+
+## 📁 Estrutura do Projeto
+
+```
+ad-user-creator-web/
+├── backend/                 # API FastAPI
+│   ├── app/
+│   │   ├── api/            # Endpoints da API
+│   │   ├── core/           # Configurações e exceções
+│   │   ├── schemas/        # Schemas Pydantic
+│   │   └── services/       # Serviços de negócio
+│   ├── tests/              # Testes
+│   ├── Dockerfile          # Container do backend
+│   └── requirements.txt    # Dependências Python
+├── src/                    # Frontend React
+│   ├── components/         # Componentes React
+│   ├── pages/             # Páginas
+│   └── hooks/             # Hooks customizados
+├── docker-compose.yml      # Orquestração produção
+├── docker-compose.dev.yml  # Orquestração desenvolvimento
+├── Dockerfile.frontend     # Container do frontend
+├── nginx.conf             # Configuração Nginx
+└── Makefile               # Comandos úteis
 ```
 
-**Edit a file directly in GitHub**
+## 🔍 Comandos Úteis
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+# Iniciar serviços
+make up                    # Produção
+make up-dev               # Desenvolvimento
 
-**Use GitHub Codespaces**
+# Logs
+make logs                 # Ver logs
+make monitor             # Monitorar em tempo real
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+# Testes
+make test                # Executar testes
+make health              # Verificar saúde
 
-## What technologies are used for this project?
+# Limpeza
+make clean               # Limpar containers
+make down                # Parar serviços
+```
 
-This project is built with:
+## 🧪 Testes
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Execute os testes do backend:
+```bash
+make test
+```
 
-## How can I deploy this project?
+Ou localmente:
+```bash
+cd backend && pytest
+```
 
-Simply open [Lovable](https://lovable.dev/projects/957a437f-41d2-401c-9948-d1cc8b340459) and click on Share -> Publish.
+## 🔒 Segurança
 
-## Can I connect a custom domain to my Lovable project?
+- Validação de entrada com Pydantic
+- Middleware de segurança HTTP
+- CORS configurado apropriadamente
+- Headers de segurança via Nginx
+- Usuário não-root nos containers
 
-Yes, you can!
+## 📊 Monitoramento
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- Health checks automáticos
+- Logs estruturados em arquivos
+- Métricas de performance via Nginx
+- Rotação de logs configurada
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## 🚨 Tratamento de Erros
+
+A API retorna códigos de status apropriados:
+- `200` - Sucesso
+- `201` - Criado
+- `400` - Dados inválidos
+- `409` - Usuário já existe
+- `503` - Erro de conexão AD
+
+## 📖 Documentação
+
+- **API**: http://localhost:8000/api/v1/docs
+- **Backend**: `backend/README.md`
+- **Makefile**: `make help`
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature
+3. Commit suas mudanças
+4. Push para a branch
+5. Abra um Pull Request
+
+## 📄 Licença
+
+MIT License - veja o arquivo LICENSE para detalhes.
+
+## 🆘 Suporte
+
+Para suporte, abra uma issue no GitHub ou entre em contato.

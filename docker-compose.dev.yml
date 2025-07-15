@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Frontend - React Development Server
+  # =============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: development
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+    depends_on:
+      - backend
+    networks:
+      - dev-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Backend - FastAPI Development Server
+  # =============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: builder
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - SECRET_KEY=dev-secret-key-not-for-production
+      - BACKEND_CORS_ORIGINS=http://localhost:3000,https://localhost:3000
+      - AD_SERVER=ldap://localhost:389
+      - AD_DOMAIN=example.local
+      - AD_BASE_DN=DC=example,DC=local
+      - AD_USERNAME=admin
+      - AD_PASSWORD=password
+      - AD_USE_SSL=false
+      - AD_USERS_OU=OU=Users,DC=example,DC=local
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/requirements.txt:/app/requirements.txt:ro
+      - backend-dev-data:/app/data
+      - backend-dev-logs:/app/logs
+    command: >
+      sh -c "pip install -r requirements.txt && 
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug"
+    networks:
+      - dev-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # =============================================================================
+  # Database - PostgreSQL (Opcional para desenvolvimento)
+  # =============================================================================
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=ad_user_creator
+      - POSTGRES_USER=dev_user
+      - POSTGRES_PASSWORD=dev_password
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - dev-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Redis - Cache (Opcional para desenvolvimento)
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    networks:
+      - dev-network
+    restart: unless-stopped
+
+# =============================================================================
+# Volumes para desenvolvimento
+# =============================================================================
+volumes:
+  backend-dev-data:
+    driver: local
+  backend-dev-logs:
+    driver: local
+  postgres-dev-data:
+    driver: local
+  redis-dev-data:
+    driver: local
+
+# =============================================================================
+# Rede para desenvolvimento
+# =============================================================================
+networks:
+  dev-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16 
