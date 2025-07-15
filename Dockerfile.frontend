@@ -6,7 +6,7 @@
 FROM node:18-alpine as builder
 
 # Configurações de build
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 ENV GENERATE_SOURCEMAP=false
 
 # Instala dependências do sistema
@@ -28,8 +28,8 @@ COPY postcss.config.js ./
 COPY index.html ./
 COPY components.json ./
 
-# Instala dependências
-RUN npm ci --only=production --silent
+# CORREÇÃO: Instala TODAS as dependências (incluindo dev para build)
+RUN npm ci --silent
 
 # Copia código fonte
 COPY src/ ./src/
@@ -95,4 +95,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:80 || exit 1
 
 # Comando padrão
-CMD ["nginx", "-g", "daemon off;"] 
+CMD ["nginx", "-g", "daemon off;"]
