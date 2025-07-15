@@ -52,6 +52,15 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				admin: {
+					primary: 'hsl(var(--admin-primary))',
+					'primary-foreground': 'hsl(var(--admin-primary-foreground))',
+					secondary: 'hsl(var(--admin-secondary))',
+					accent: 'hsl(var(--admin-accent))',
+					success: 'hsl(var(--admin-success))',
+					warning: 'hsl(var(--admin-warning))',
+					error: 'hsl(var(--admin-error))'
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
@@ -88,7 +97,17 @@ export default {
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'fade-in': 'fadeIn 0.5s ease-in-out',
+				'slide-up': 'slideUp 0.3s ease-out'
+			},
+			backgroundImage: {
+				'gradient-admin': 'var(--gradient-admin)',
+				'gradient-card': 'var(--gradient-card)'
+			},
+			boxShadow: {
+				'admin': 'var(--shadow-admin)',
+				'card-admin': 'var(--shadow-card)'
 			}
 		}
 	},
