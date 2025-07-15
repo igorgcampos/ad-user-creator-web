@@ -1,5 +1,6 @@
 from typing import List, Optional, Union
-from pydantic import BaseSettings, validator, AnyHttpUrl
+from pydantic_settings import BaseSettings
+from pydantic import field_validator, AnyHttpUrl
 import os
 from functools import lru_cache
 
@@ -16,7 +17,8 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
     
-    @validator("BACKEND_CORS_ORIGINS", pre=True)
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
         if isinstance(v, str) and not v.startswith("["):
             return [i.strip() for i in v.split(",")]
@@ -55,9 +57,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {"env_file": ".env", "case_sensitive": True}
 
 
 @lru_cache()

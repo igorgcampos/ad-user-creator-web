@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import re
 from datetime import datetime
@@ -12,7 +12,8 @@ class UserCreateRequest(BaseModel):
     loginName: str = Field(..., min_length=3, max_length=50, description="Nome de login do usuário")
     password: str = Field(..., min_length=8, description="Senha do usuário")
     
-    @validator('firstName', 'lastName')
+    @field_validator('firstName', 'lastName')
+    @classmethod
     def validate_names(cls, v):
         if not v.strip():
             raise ValueError('Nome não pode estar vazio')
@@ -20,7 +21,8 @@ class UserCreateRequest(BaseModel):
             raise ValueError('Nome contém caracteres inválidos')
         return v.strip().title()
     
-    @validator('loginName')
+    @field_validator('loginName')
+    @classmethod
     def validate_login_name(cls, v):
         if not v.strip():
             raise ValueError('Nome de login não pode estar vazio')
@@ -30,7 +32,8 @@ class UserCreateRequest(BaseModel):
             raise ValueError('Nome de login não pode começar/terminar com ponto ou ter pontos consecutivos')
         return v.strip().lower()
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('Senha deve ter pelo menos 8 caracteres')
@@ -44,8 +47,8 @@ class UserCreateRequest(BaseModel):
             raise ValueError('Senha deve conter pelo menos um caractere especial')
         return v
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "firstName": "João",
                 "lastName": "Silva",
@@ -53,6 +56,7 @@ class UserCreateRequest(BaseModel):
                 "password": "MinhaSenh@123"
             }
         }
+    }
 
 
 class UserCreateResponse(BaseModel):
@@ -62,8 +66,8 @@ class UserCreateResponse(BaseModel):
     message: str = Field(..., description="Mensagem de resposta")
     user: Optional["UserInfo"] = Field(None, description="Informações do usuário criado")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "success": True,
                 "message": "Usuário criado com sucesso no Active Directory",
@@ -76,6 +80,7 @@ class UserCreateResponse(BaseModel):
                 }
             }
         }
+    }
 
 
 class UserInfo(BaseModel):
@@ -87,8 +92,8 @@ class UserInfo(BaseModel):
     distinguished_name: str = Field(..., description="Distinguished Name no AD")
     created_at: datetime = Field(..., description="Data/hora de criação")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "loginName": "joao.silva",
                 "displayName": "João Silva",
@@ -97,6 +102,7 @@ class UserInfo(BaseModel):
                 "created_at": "2023-12-01T10:00:00Z"
             }
         }
+    }
 
 
 class UserExistsResponse(BaseModel):
@@ -106,14 +112,15 @@ class UserExistsResponse(BaseModel):
     loginName: str = Field(..., description="Nome de login verificado")
     message: str = Field(..., description="Mensagem de resposta")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "exists": False,
                 "loginName": "joao.silva",
                 "message": "Usuário não encontrado"
             }
         }
+    }
 
 
 class PasswordValidationRequest(BaseModel):
@@ -121,12 +128,13 @@ class PasswordValidationRequest(BaseModel):
     
     password: str = Field(..., min_length=1, description="Senha para validação")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "password": "MinhaSenh@123"
             }
         }
+    }
 
 
 class PasswordValidationResponse(BaseModel):
@@ -136,8 +144,8 @@ class PasswordValidationResponse(BaseModel):
     message: str = Field(..., description="Mensagem de validação")
     requirements: dict = Field(..., description="Detalhes dos requisitos de senha")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "valid": True,
                 "message": "Senha válida",
@@ -150,6 +158,7 @@ class PasswordValidationResponse(BaseModel):
                 }
             }
         }
+    }
 
 
 class ErrorResponse(BaseModel):
@@ -158,10 +167,11 @@ class ErrorResponse(BaseModel):
     detail: str = Field(..., description="Detalhes do erro")
     error_code: Optional[str] = Field(None, description="Código do erro")
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "detail": "Usuário já existe no Active Directory",
                 "error_code": "USER_ALREADY_EXISTS"
             }
-        } 
+        }
+    } 
