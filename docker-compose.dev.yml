@@ -13,7 +13,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://44.222.181.172:8000
       - CHOKIDAR_USEPOLLING=true
     volumes:
       - ./src:/app/src:ro
@@ -41,7 +41,7 @@ services:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
       - SECRET_KEY=dev-secret-key-not-for-production
-      - BACKEND_CORS_ORIGINS=http://localhost:3000,https://localhost:3000
+      - BACKEND_CORS_ORIGINS=http://44.222.181.172:3000,https://44.222.181.172:3000,http://44.222.181.172,https://44.222.181.172
       - AD_SERVER=ldap://localhost:389
       - AD_DOMAIN=example.local
       - AD_BASE_DN=DC=example,DC=local

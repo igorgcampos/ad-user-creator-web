@@ -1,6 +1,6 @@
 # AD User Creator - Makefile
 
-.PHONY: help build up down logs clean test lint format
+.PHONY: help build up down logs clean test lint format deploy-ec2
 
 # Default target
 help:
@@ -17,6 +17,8 @@ help:
 	@echo "  format     - Formata o código"
 	@echo "  backend    - Inicia apenas o backend"
 	@echo "  frontend   - Inicia apenas o frontend"
+	@echo "  deploy-ec2 - Deploy automatizado para EC2"
+	@echo "  setup-ec2  - Configura ambiente EC2"
 	@echo ""
 
 # Build das imagens
@@ -75,6 +77,20 @@ backend:
 frontend:
 	docker-compose up -d frontend
 
+# Deploy automatizado para EC2
+deploy-ec2:
+	@chmod +x deploy-ec2.sh
+	@./deploy-ec2.sh
+
+# Configurar ambiente EC2
+setup-ec2:
+	@echo "🔧 Configurando ambiente EC2..."
+	@if [ ! -f .env ]; then cp env.example .env; echo "✅ Arquivo .env criado"; fi
+	@echo "📋 Verificando dependências..."
+	@command -v docker >/dev/null 2>&1 || { echo "❌ Docker não instalado"; exit 1; }
+	@command -v docker-compose >/dev/null 2>&1 || { echo "❌ Docker Compose não instalado"; exit 1; }
+	@echo "✅ Ambiente configurado com sucesso!"
+
 # Backup do banco de dados simulado
 backup:
 	docker cp $$(docker-compose ps -q backend):/app/data ./backup-$$(date +%Y%m%d-%H%M%S)
@@ -94,9 +110,19 @@ run-frontend:
 
 # Health check
 health:
-	curl -f http://localhost:8000/health || echo "Backend não está rodando"
-	curl -f http://localhost:3000/health || echo "Frontend não está rodando"
+	@echo "🏥 Verificando saúde dos serviços..."
+	@curl -f http://localhost:8000/health && echo "✅ Backend OK" || echo "❌ Backend com problema"
+	@curl -f http://localhost:3000 && echo "✅ Frontend OK" || echo "❌ Frontend com problema"
 
 # Monitora logs em tempo real
 monitor:
-	watch -n 1 'docker-compose ps && echo "=== BACKEND LOGS ===" && docker-compose logs --tail=10 backend' 
+	watch -n 1 'docker-compose ps && echo "=== BACKEND LOGS ===" && docker-compose logs --tail=10 backend'
+
+# Restart dos serviços
+restart:
+	docker-compose restart
+
+# Status dos serviços
+status:
+	@echo "📊 Status dos serviços:"
+	@docker-compose ps 

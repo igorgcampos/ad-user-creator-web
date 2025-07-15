@@ -28,7 +28,7 @@ COPY postcss.config.js ./
 COPY index.html ./
 COPY components.json ./
 
-# CORREÇÃO: Instala TODAS as dependências (incluindo dev para build)
+# Instala TODAS as dependências (incluindo dev para build)
 RUN npm ci --silent
 
 # Copia código fonte

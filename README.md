@@ -49,44 +49,97 @@ Sistema completo para criação de usuários no Active Directory com frontend Re
 - Node.js 18+ (para desenvolvimento local)
 - Python 3.11+ (para desenvolvimento local)
 
-## 🚀 Início Rápido
+## 🚀 Deploy na AWS EC2
 
-### Usando Docker (Recomendado)
+### **Deploy Automatizado (Recomendado)**
+
+1. **SSH na EC2:**
+```bash
+ssh -i sua-chave.pem ec2-user@44.222.181.172
+```
+
+2. **Clone e Execute:**
+```bash
+git clone <seu-repositório>
+cd ad-user-creator-web
+make deploy-ec2
+```
+
+### **Deploy Manual**
+
+1. **Instale Docker na EC2:**
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+```
+
+2. **Instale Docker Compose:**
+```bash
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+3. **Configure e Execute:**
+```bash
+cp env.example .env
+make build
+make up
+```
+
+### **⚠️ Configuração do Security Group**
+
+Configure o Security Group da EC2 para permitir:
+```
+- Porta 22 (SSH)
+- Porta 3000 (Frontend)
+- Porta 8000 (Backend)
+- Porta 80 (HTTP) - opcional
+```
+
+### **🌐 URLs da Aplicação**
+- **Frontend**: http://44.222.181.172:3000
+- **Backend**: http://44.222.181.172:8000
+- **API Docs**: http://44.222.181.172:8000/api/v1/docs
+
+## 🔧 Desenvolvimento Local
+
+### **Usando Docker (Recomendado)**
 
 1. **Clone o repositório:**
-
+```bash
 git clone <repository-url>
 cd ad-user-creator-web
-
+```
 
 2. **Inicie os serviços:**
-
+```bash
 # Produção
 make up
 
 # Desenvolvimento
 make up-dev
-
+```
 
 3. **Acesse a aplicação:**
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - Documentação: http://localhost:8000/api/v1/docs
 
-### Desenvolvimento Local
+### **Desenvolvimento Local (Sem Docker)**
 
 1. **Backend:**
-
+```bash
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload
-
+```
 
 2. **Frontend:**
-
+```bash
 npm install
 npm run dev
-
+```
 
 ## 📡 Endpoints da API
 
@@ -105,16 +158,16 @@ npm run dev
 
 Copie `env.example` para `.env` e configure:
 
-
+```env
 # Backend
-ENVIRONMENT=development
+ENVIRONMENT=production
 SECRET_KEY=your-secret-key
 AD_SERVER=ldap://localhost:389
 AD_DOMAIN=example.local
 
-# Frontend
-REACT_APP_API_URL=http://localhost:8000
-
+# Frontend (já configurado para EC2)
+REACT_APP_API_URL=http://44.222.181.172:8000
+```
 
 ## 📁 Estrutura do Projeto
 
@@ -137,27 +190,34 @@ ad-user-creator-web/
 ├── docker-compose.dev.yml  # Orquestração desenvolvimento
 ├── Dockerfile.frontend     # Container do frontend
 ├── nginx.conf             # Configuração Nginx
+├── deploy-ec2.sh          # Script de deploy EC2
 └── Makefile               # Comandos úteis
 ```
 
 ## 🔍 Comandos Úteis
 
 ```bash
-# Iniciar serviços
-make up                    # Produção
-make up-dev               # Desenvolvimento
+# Deploy
+make deploy-ec2           # Deploy automatizado na EC2
+make setup-ec2            # Configurar ambiente EC2
 
-# Logs
-make logs                 # Ver logs
+# Iniciar serviços
+make up                   # Produção
+make up-dev              # Desenvolvimento
+
+# Logs e Monitoramento
+make logs                # Ver logs
+make health              # Verificar saúde
+make status              # Status dos serviços
 make monitor             # Monitorar em tempo real
 
 # Testes
 make test                # Executar testes
-make health              # Verificar saúde
 
 # Limpeza
 make clean               # Limpar containers
 make down                # Parar serviços
+make restart             # Reiniciar serviços
 ```
 
 ## 🧪 Testes
@@ -198,9 +258,38 @@ A API retorna códigos de status apropriados:
 
 ## 📖 Documentação
 
-- **API**: http://localhost:8000/api/v1/docs
+- **API**: http://44.222.181.172:8000/api/v1/docs
 - **Backend**: `backend/README.md`
 - **Makefile**: `make help`
+
+## 🔧 Troubleshooting
+
+### **Problemas Comuns:**
+
+1. **Erro de conexão:**
+   - Verifique se as portas estão abertas no Security Group
+   - Confirme se os serviços estão rodando: `make status`
+
+2. **Build falha:**
+   - Limpe o cache: `make clean`
+   - Rebuild: `make build`
+
+3. **Frontend não carrega:**
+   - Verifique logs: `docker-compose logs frontend`
+   - Teste direct: `curl http://localhost:3000`
+
+### **Logs Úteis:**
+```bash
+# Ver todos os logs
+make logs
+
+# Logs específicos
+docker-compose logs frontend
+docker-compose logs backend
+
+# Logs em tempo real
+docker-compose logs -f
+```
 
 ## 🤝 Contribuição
 
