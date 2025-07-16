@@ -333,13 +333,13 @@ docker-compose logs -f
 ```
 
 ### **Configuração LDAP:**
-```bash
+
 # Teste de conexão LDAP
 curl http://localhost:8000/api/v1/users/connection-test
 
 # Verificar configuração
 docker-compose exec backend printenv | grep AD_
-```
+
 
 ## 🤝 Contribuição
 

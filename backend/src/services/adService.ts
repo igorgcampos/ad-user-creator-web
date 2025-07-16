@@ -17,6 +17,10 @@ import {
 
 export class ADService {
   private client: ldap.Client | null = null;
+  
+  // Mutex para controlar acesso à conexão LDAP
+  private connectionMutex = false;
+  private waitingQueue: Array<() => void> = [];
 
   constructor() {
     this.initializeClient();
@@ -88,6 +92,32 @@ export class ADService {
     });
   }
 
+  // Métodos para controle do mutex
+  private async acquireConnection(): Promise<void> {
+    if (this.connectionMutex) {
+      // Se já está em uso, esperar na fila
+      await new Promise<void>((resolve) => {
+        this.waitingQueue.push(resolve);
+      });
+    }
+    this.connectionMutex = true;
+  }
+
+  private releaseConnection(): void {
+    this.connectionMutex = false;
+    const next = this.waitingQueue.shift();
+    if (next) next();
+  }
+
+  private async withConnection<T>(operation: () => Promise<T>): Promise<T> {
+    await this.acquireConnection();
+    try {
+      return await operation();
+    } finally {
+      this.releaseConnection();
+    }
+  }
+
   private async search(baseDN: string, filter: string, attributes?: string[]): Promise<LDAPUser[]> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
@@ -157,115 +187,123 @@ export class ADService {
   }
 
   public async testConnection(): Promise<boolean> {
-    try {
-      await this.bind();
-      await this.unbind();
-      return true;
-    } catch (error) {
-      logger.error('AD connection test failed:', error);
-      return false;
-    }
+    return this.withConnection(async () => {
+      try {
+        await this.bind();
+        await this.unbind();
+        return true;
+      } catch (error) {
+        logger.error('AD connection test failed:', error);
+        return false;
+      }
+    });
   }
 
   public async userExists(loginName: string): Promise<boolean> {
-    try {
-      await this.bind();
-      
-      const filter = `(sAMAccountName=${loginName})`;
-      const results = await this.search(config.ad.baseDN, filter, ['sAMAccountName']);
-      
-      await this.unbind();
-      
-      return results.length > 0;
-    } catch (error) {
-      await this.unbind();
-      logger.error('Error checking user existence:', error);
-      throw error;
-    }
+    return this.withConnection(async () => {
+      try {
+        await this.bind();
+        
+        const filter = `(sAMAccountName=${loginName})`;
+        const results = await this.search(config.ad.baseDN, filter, ['sAMAccountName']);
+        
+        await this.unbind();
+        
+        return results.length > 0;
+      } catch (error) {
+        await this.unbind();
+        logger.error('Error checking user existence:', error);
+        throw error;
+      }
+    });
   }
 
   public async getUserInfo(loginName: string): Promise<UserInfo | null> {
-    try {
-      await this.bind();
-      
-      const filter = `(sAMAccountName=${loginName})`;
-      const results = await this.search(config.ad.baseDN, filter);
-      
-      await this.unbind();
-      
-      if (results.length === 0) {
-        return null;
-      }
+    return this.withConnection(async () => {
+      try {
+        await this.bind();
+        
+        const filter = `(sAMAccountName=${loginName})`;
+        const results = await this.search(config.ad.baseDN, filter);
+        
+        await this.unbind();
+        
+        if (results.length === 0) {
+          return null;
+        }
 
-      const user = results[0];
-      if (!user) {
-        return null;
+        const user = results[0];
+        if (!user) {
+          return null;
+        }
+        return {
+          loginName: user.sAMAccountName,
+          displayName: user.displayName,
+          email: user.mail,
+          distinguished_name: user.dn,
+          created_at: user.whenCreated
+        };
+      } catch (error) {
+        await this.unbind();
+        logger.error('Error getting user info:', error);
+        throw error;
       }
-      return {
-        loginName: user.sAMAccountName,
-        displayName: user.displayName,
-        email: user.mail,
-        distinguished_name: user.dn,
-        created_at: user.whenCreated
-      };
-    } catch (error) {
-      await this.unbind();
-      logger.error('Error getting user info:', error);
-      throw error;
-    }
+    });
   }
 
   public async createUser(userData: UserCreateRequest): Promise<UserInfo> {
-    try {
-      // Verifica se o usuário já existe
-      const exists = await this.userExists(userData.loginName);
-      if (exists) {
-        throw new UserAlreadyExistsError(userData.loginName);
+    return this.withConnection(async () => {
+      try {
+        // Verifica se o usuário já existe
+        const exists = await this.userExists(userData.loginName);
+        if (exists) {
+          throw new UserAlreadyExistsError(userData.loginName);
+        }
+
+        await this.bind();
+
+        // Cria o Distinguished Name para o novo usuário
+        const userDN = `CN=${userData.firstName} ${userData.lastName},${config.ad.usersOU}`;
+        
+        // Atributos do usuário
+        const userEntry = {
+          objectClass: ['top', 'person', 'organizationalPerson', 'user'],
+          cn: `${userData.firstName} ${userData.lastName}`,
+          sn: userData.lastName,
+          givenName: userData.firstName,
+          displayName: `${userData.firstName} ${userData.lastName}`,
+          sAMAccountName: userData.loginName,
+          userPrincipalName: `${userData.loginName}@${config.ad.domain}`,
+          mail: `${userData.loginName}@${config.ad.domain}`,
+          unicodePwd: Buffer.from(`"${userData.password}"`, 'utf16le'),
+          userAccountControl: 512 // Conta normal habilitada
+        };
+
+        // Adiciona o usuário
+        await this.addUser(userDN, userEntry);
+        
+        await this.unbind();
+
+        // Retorna informações do usuário criado
+        return {
+          loginName: userData.loginName,
+          displayName: `${userData.firstName} ${userData.lastName}`,
+          email: `${userData.loginName}@${config.ad.domain}`,
+          distinguished_name: userDN,
+          created_at: new Date()
+        };
+
+      } catch (error) {
+        await this.unbind();
+        logger.error('Error creating user:', error);
+        
+        if (error instanceof UserAlreadyExistsError) {
+          throw error;
+        }
+        
+        throw new UserCreationError(`Erro ao criar usuário: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
       }
-
-      await this.bind();
-
-      // Cria o Distinguished Name para o novo usuário
-      const userDN = `CN=${userData.firstName} ${userData.lastName},${config.ad.usersOU}`;
-      
-      // Atributos do usuário
-      const userEntry = {
-        objectClass: ['top', 'person', 'organizationalPerson', 'user'],
-        cn: `${userData.firstName} ${userData.lastName}`,
-        sn: userData.lastName,
-        givenName: userData.firstName,
-        displayName: `${userData.firstName} ${userData.lastName}`,
-        sAMAccountName: userData.loginName,
-        userPrincipalName: `${userData.loginName}@${config.ad.domain}`,
-        mail: `${userData.loginName}@${config.ad.domain}`,
-        unicodePwd: Buffer.from(`"${userData.password}"`, 'utf16le'),
-        userAccountControl: 512 // Conta normal habilitada
-      };
-
-      // Adiciona o usuário
-      await this.addUser(userDN, userEntry);
-      
-      await this.unbind();
-
-      // Retorna informações do usuário criado
-      return {
-        loginName: userData.loginName,
-        displayName: `${userData.firstName} ${userData.lastName}`,
-        email: `${userData.loginName}@${config.ad.domain}`,
-        distinguished_name: userDN,
-        created_at: new Date()
-      };
-
-    } catch (error) {
-      await this.unbind();
-      logger.error('Error creating user:', error);
-      
-      if (error instanceof UserAlreadyExistsError) {
-        throw error;
-      }
-      
-      throw new UserCreationError(`Erro ao criar usuário: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
-    }
+    });
   }
 
   private async addUser(dn: string, entry: any): Promise<void> {
@@ -318,22 +356,24 @@ export class ADService {
   }
 
   public async suggestUsername(firstName: string, lastName: string): Promise<string> {
-    const baseUsername = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
-    let username = baseUsername;
-    let counter = 1;
+    return this.withConnection(async () => {
+      const baseUsername = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+      let username = baseUsername;
+      let counter = 1;
 
-    // Verifica se o nome de usuário já existe e sugere alternativas
-    while (await this.userExists(username)) {
-      username = `${baseUsername}${counter}`;
-      counter++;
-      
-      // Limita a busca para evitar loop infinito
-      if (counter > 999) {
-        throw new Error('Não foi possível gerar um nome de usuário único');
+      // Verifica se o nome de usuário já existe e sugere alternativas
+      while (await this.userExists(username)) {
+        username = `${baseUsername}${counter}`;
+        counter++;
+        
+        // Limita a busca para evitar loop infinito
+        if (counter > 999) {
+          throw new Error('Não foi possível gerar um nome de usuário único');
+        }
       }
-    }
 
-    return username;
+      return username;
+    });
   }
 
   public async destroy(): Promise<void> {
