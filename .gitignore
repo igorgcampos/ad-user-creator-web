@@ -22,3 +22,156 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# =============================================================================
+# SECURITY - Environment Variables & Secrets
+# =============================================================================
+
+# Environment files - NEVER COMMIT THESE!
+.env
+.env.*
+.env.local
+.env.development
+.env.test
+.env.production
+!.env.example
+!.env.template
+
+# Backend specific environment files
+backend/.env
+backend/.env.*
+
+# Secrets and certificates
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# =============================================================================
+# Docker & Containers
+# =============================================================================
+
+# Docker data and volumes
+.docker-data/
+docker-data/
+volumes/
+
+# Docker Compose overrides
+docker-compose.override.yml
+docker-compose.local.yml
+
+# =============================================================================
+# Databases & Cache
+# =============================================================================
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Redis dumps
+dump.rdb
+
+# =============================================================================
+# Backend Specific
+# =============================================================================
+
+# Python
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Virtual environments
+backend/venv/
+backend/env/
+backend/.venv/
+
+# =============================================================================
+# OS & System Files
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+Desktop.ini
+
+# Linux
+*~
+
+# =============================================================================
+# Temporary & Cache Files
+# =============================================================================
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.cache/
+
+# npm/yarn cache
+.npm
+.yarn-integrity
+yarn-error.log
+
+# Build artifacts
+build/
+dist/
+out/
+target/
+
+# =============================================================================
+# Development & Testing
+# =============================================================================
+
+# Coverage reports
+coverage/
+.nyc_output
+.coverage.*
+
+# Test artifacts
+test-results/
+screenshots/
+videos/
+
+# =============================================================================
+# Backups & Archives
+# =============================================================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# =============================================================================
+# Monitoring & Logs
+# =============================================================================
+
+# Application logs
+logs/
+*.log.*
+access.log
+error.log
+
+# Monitoring data
+monitoring/
+metrics/
