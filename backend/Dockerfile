@@ -5,8 +5,8 @@
 # Stage 1: Build stage - Instala dependências e compila TypeScript
 FROM node:20-alpine as builder
 
-# Configurações de build
-ENV NODE_ENV=production \
+# Configurações de build - NODE_ENV=development para instalar devDependencies
+ENV NODE_ENV=development \
     NPM_CONFIG_CACHE=/tmp/.npm \
     NPM_CONFIG_LOGLEVEL=warn
 
@@ -27,8 +27,8 @@ WORKDIR /app
 # Copia package files primeiro para cache eficiente
 COPY package*.json ./
 
-# Instala dependências
-RUN npm ci --only=production --silent
+# Instala TODAS as dependências (incluindo devDependencies) para compilar TypeScript
+RUN npm install --silent
 
 # Copia código fonte
 COPY . .
@@ -36,8 +36,8 @@ COPY . .
 # Compila TypeScript
 RUN npm run build
 
-# Remove dependências de desenvolvimento
-RUN npm prune --production
+# Remove dependências de desenvolvimento após compilação
+RUN npm prune --omit=dev
 
 # =============================================================================
 # Stage 2: Runtime stage - Ambiente de produção mínimo
