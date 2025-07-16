@@ -14,70 +14,85 @@ class Settings(BaseSettings):
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
     ALLOWED_HOSTS: List[str] = ["*"]
     
-    # CORS - Using string to avoid JSON parsing issues in Pydantic v2
-    _backend_cors_origins_raw: str = ""
+    # CORS - Simple implementation that works with Pydantic v2
+    BACKEND_CORS_ORIGINS: str = ""
     
-    @field_validator("_backend_cors_origins_raw", mode="before")
-    @classmethod
-    def validate_cors_origins_raw(cls, v):
-        if v is None:
-            return ""
-        return str(v)
-    
-    @property
-    def BACKEND_CORS_ORIGINS(self) -> List[str]:
+    def get_cors_origins(self) -> List[str]:
         """Parse CORS origins from string to list"""
-        if not self._backend_cors_origins_raw.strip():
+        if not self.BACKEND_CORS_ORIGINS.strip():
             return []
-        
-        # Handle CSV format
-        origins = [origin.strip() for origin in self._backend_cors_origins_raw.split(",") if origin.strip()]
-        return origins
-    
+        if self.BACKEND_CORS_ORIGINS.strip().startswith("["):
+            # If it's JSON format, try to parse it
+            import json
+            try:
+                return json.loads(self.BACKEND_CORS_ORIGINS)
+            except:
+                return []
+        # If it's comma-separated format
+        return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]
+
     # Database
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str = "sqlite:///./ad_users.db"
     
-    # Active Directory Configuration
-    AD_SERVER: str = os.getenv("AD_SERVER", "ldap://localhost:389")
-    AD_DOMAIN: str = os.getenv("AD_DOMAIN", "example.local")
-    AD_BASE_DN: str = os.getenv("AD_BASE_DN", "DC=example,DC=local")
-    AD_USERNAME: str = os.getenv("AD_USERNAME", "admin")
-    AD_PASSWORD: str = os.getenv("AD_PASSWORD", "password")
-    AD_USE_SSL: bool = os.getenv("AD_USE_SSL", "false").lower() == "true"
-    AD_USERS_OU: str = os.getenv("AD_USERS_OU", "OU=Users,DC=example,DC=local")
+    # Active Directory Settings
+    AD_SERVER: str = ""
+    AD_DOMAIN: str = ""
+    AD_BASE_DN: str = ""
+    AD_USERNAME: str = ""
+    AD_PASSWORD: str = ""
+    AD_USE_SSL: bool = True
+    AD_USERS_OU: str = ""
     
-    # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # Development/Testing
+    DEBUG: bool = False
     
-    # Security Settings
-    PASSWORD_MIN_LENGTH: int = 8
+    # Server settings
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    
+    # Timeouts
+    REQUEST_TIMEOUT: int = 30
+    AD_TIMEOUT: int = 10
+    
+    # Pagination
+    DEFAULT_PAGE_SIZE: int = 50
+    MAX_PAGE_SIZE: int = 100
+    
+    # Password requirements
+    MIN_PASSWORD_LENGTH: int = 8
     PASSWORD_REQUIRE_UPPERCASE: bool = True
     PASSWORD_REQUIRE_LOWERCASE: bool = True
     PASSWORD_REQUIRE_NUMBERS: bool = True
     PASSWORD_REQUIRE_SPECIAL: bool = True
     
-    # Rate Limiting
-    RATE_LIMIT_REQUESTS: int = 100
-    RATE_LIMIT_PERIOD: int = 3600  # 1 hora em segundos
+    # File storage
+    UPLOAD_MAX_SIZE: int = 10 * 1024 * 1024  # 10MB
+    ALLOWED_EXTENSIONS: List[str] = [".txt", ".csv", ".json"]
     
-    # Environment
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
+    # Rate limiting
+    RATE_LIMIT_REQUESTS: int = 100
+    RATE_LIMIT_WINDOW: int = 3600  # 1 hour
+    
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    
+    # Health check
+    HEALTH_CHECK_INTERVAL: int = 30
     
     model_config = {
-        "env_file": ".env", 
-        "case_sensitive": True,
-        # Map environment variable to internal field
-        "field_aliases": {
-            "_backend_cors_origins_raw": "BACKEND_CORS_ORIGINS"
-        }
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore"
     }
 
 
 @lru_cache()
 def get_settings() -> Settings:
+    """Get settings instance (cached)"""
     return Settings()
 
 
+# Global settings instance
 settings = get_settings() 
