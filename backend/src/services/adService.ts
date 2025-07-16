@@ -113,6 +113,16 @@ export class ADService {
     await this.acquireConnection();
     try {
       return await operation();
+    } catch (error) {
+      // Em caso de erro, tentar recuperar a conexão
+      logger.error('Error in withConnection, attempting to recover:', error);
+      try {
+        await this.unbind();
+        this.initializeClient();
+      } catch (recoveryError) {
+        logger.error('Failed to recover connection:', recoveryError);
+      }
+      throw error;
     } finally {
       this.releaseConnection();
     }
@@ -198,7 +208,11 @@ export class ADService {
       
       return results.length > 0;
     } catch (error) {
-      await this.unbind();
+      try {
+        await this.unbind();
+      } catch (unbindError) {
+        logger.error('Error during unbind in _userExists:', unbindError);
+      }
       logger.error('Error checking user existence:', error);
       throw error;
     }
@@ -229,7 +243,11 @@ export class ADService {
         created_at: user.whenCreated
       };
     } catch (error) {
-      await this.unbind();
+      try {
+        await this.unbind();
+      } catch (unbindError) {
+        logger.error('Error during unbind in _getUserInfo:', unbindError);
+      }
       logger.error('Error getting user info:', error);
       throw error;
     }
@@ -239,11 +257,30 @@ export class ADService {
   public async testConnection(): Promise<boolean> {
     return this.withConnection(async () => {
       try {
+        logger.debug('Starting connection test');
+        
+        // Reinicializar cliente para garantir estado limpo
+        if (this.client) {
+          try {
+            this.client.destroy();
+          } catch (e) {
+            logger.debug('Error destroying client:', e);
+          }
+        }
+        this.initializeClient();
+        
         await this.bind();
+        logger.debug('Bind successful, testing unbind');
         await this.unbind();
+        logger.debug('Connection test completed successfully');
         return true;
       } catch (error) {
         logger.error('AD connection test failed:', error);
+        try {
+          await this.unbind();
+        } catch (unbindError) {
+          logger.error('Error during unbind in testConnection:', unbindError);
+        }
         return false;
       }
     });
