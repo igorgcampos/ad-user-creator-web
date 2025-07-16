@@ -116,17 +116,17 @@ export class ADService {
           try {
             const user: LDAPUser = {
               dn: entry.objectName || '',
-              displayName: entry.object?.displayName || '',
-              mail: entry.object?.mail || '',
-              sAMAccountName: entry.object?.sAMAccountName || '',
-              userPrincipalName: entry.object?.userPrincipalName || '',
-              cn: entry.object?.cn || '',
-              givenName: entry.object?.givenName || '',
-              sn: entry.object?.sn || '',
-              objectClass: Array.isArray(entry.object?.objectClass) 
-                ? entry.object.objectClass as string[]
-                : [entry.object?.objectClass as string],
-              whenCreated: entry.object?.whenCreated ? new Date(entry.object.whenCreated as string) : new Date()
+              displayName: entry.getAttribute('displayName')?.vals?.[0] || '',
+              mail: entry.getAttribute('mail')?.vals?.[0] || '',
+              sAMAccountName: entry.getAttribute('sAMAccountName')?.vals?.[0] || '',
+              userPrincipalName: entry.getAttribute('userPrincipalName')?.vals?.[0] || '',
+              cn: entry.getAttribute('cn')?.vals?.[0] || '',
+              givenName: entry.getAttribute('givenName')?.vals?.[0] || '',
+              sn: entry.getAttribute('sn')?.vals?.[0] || '',
+              objectClass: entry.getAttribute('objectClass')?.vals || [],
+              whenCreated: entry.getAttribute('whenCreated')?.vals?.[0] 
+                ? new Date(entry.getAttribute('whenCreated').vals[0]) 
+                : new Date()
             };
             results.push(user);
           } catch (parseError) {
