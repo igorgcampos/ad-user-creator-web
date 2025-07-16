@@ -17,9 +17,9 @@ RUN apk add --no-cache \
     g++ \
     git
 
-# Cria usuário não-root para segurança
-RUN addgroup -g 1000 -S app && \
-    adduser -u 1000 -S app -G app
+# Cria usuário não-root para segurança (usando GID/UID diferentes)
+RUN addgroup -g 1001 -S app && \
+    adduser -u 1001 -S app -G app
 
 # Cria e usa diretório de trabalho
 WORKDIR /app
@@ -52,9 +52,13 @@ RUN apk add --no-cache \
     curl \
     dumb-init
 
-# Cria usuário não-root
-RUN addgroup -g 1000 -S app && \
-    adduser -u 1000 -S app -G app
+# Cria usuário não-root de forma mais robusta
+RUN if ! getent group app >/dev/null 2>&1; then \
+        addgroup -g 1001 -S app; \
+    fi && \
+    if ! getent passwd app >/dev/null 2>&1; then \
+        adduser -u 1001 -S app -G app; \
+    fi
 
 # Cria diretórios necessários
 RUN mkdir -p /app/logs /app/data && \
@@ -82,4 +86,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Comando padrão
-CMD ["node", "dist/index.js"] 
+CMD ["node", "dist/index.js"]
