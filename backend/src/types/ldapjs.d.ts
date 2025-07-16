@@ -23,6 +23,10 @@ declare module 'ldapjs' {
     modify(dn: string, changes: any, callback: (err: Error | null) => void): void;
     del(dn: string, callback: (err: Error | null) => void): void;
     unbind(callback: (err: Error | null) => void): void;
+    on(event: 'error', listener: (err: Error) => void): this;
+    on(event: 'connect', listener: () => void): this;
+    on(event: 'disconnect', listener: () => void): this;
+    destroy(): void;
   }
 
   export function createClient(options: any): Client;
