@@ -186,6 +186,56 @@ export class ADService {
     });
   }
 
+  // Métodos internos sem mutex (para uso dentro de withConnection)
+  private async _userExists(loginName: string): Promise<boolean> {
+    try {
+      await this.bind();
+      
+      const filter = `(sAMAccountName=${loginName})`;
+      const results = await this.search(config.ad.baseDN, filter, ['sAMAccountName']);
+      
+      await this.unbind();
+      
+      return results.length > 0;
+    } catch (error) {
+      await this.unbind();
+      logger.error('Error checking user existence:', error);
+      throw error;
+    }
+  }
+
+  private async _getUserInfo(loginName: string): Promise<UserInfo | null> {
+    try {
+      await this.bind();
+      
+      const filter = `(sAMAccountName=${loginName})`;
+      const results = await this.search(config.ad.baseDN, filter);
+      
+      await this.unbind();
+      
+      if (results.length === 0) {
+        return null;
+      }
+
+      const user = results[0];
+      if (!user) {
+        return null;
+      }
+      return {
+        loginName: user.sAMAccountName,
+        displayName: user.displayName,
+        email: user.mail,
+        distinguished_name: user.dn,
+        created_at: user.whenCreated
+      };
+    } catch (error) {
+      await this.unbind();
+      logger.error('Error getting user info:', error);
+      throw error;
+    }
+  }
+
+  // Métodos públicos com mutex
   public async testConnection(): Promise<boolean> {
     return this.withConnection(async () => {
       try {
@@ -201,61 +251,21 @@ export class ADService {
 
   public async userExists(loginName: string): Promise<boolean> {
     return this.withConnection(async () => {
-      try {
-        await this.bind();
-        
-        const filter = `(sAMAccountName=${loginName})`;
-        const results = await this.search(config.ad.baseDN, filter, ['sAMAccountName']);
-        
-        await this.unbind();
-        
-        return results.length > 0;
-      } catch (error) {
-        await this.unbind();
-        logger.error('Error checking user existence:', error);
-        throw error;
-      }
+      return this._userExists(loginName);
     });
   }
 
   public async getUserInfo(loginName: string): Promise<UserInfo | null> {
     return this.withConnection(async () => {
-      try {
-        await this.bind();
-        
-        const filter = `(sAMAccountName=${loginName})`;
-        const results = await this.search(config.ad.baseDN, filter);
-        
-        await this.unbind();
-        
-        if (results.length === 0) {
-          return null;
-        }
-
-        const user = results[0];
-        if (!user) {
-          return null;
-        }
-        return {
-          loginName: user.sAMAccountName,
-          displayName: user.displayName,
-          email: user.mail,
-          distinguished_name: user.dn,
-          created_at: user.whenCreated
-        };
-      } catch (error) {
-        await this.unbind();
-        logger.error('Error getting user info:', error);
-        throw error;
-      }
+      return this._getUserInfo(loginName);
     });
   }
 
   public async createUser(userData: UserCreateRequest): Promise<UserInfo> {
     return this.withConnection(async () => {
       try {
-        // Verifica se o usuário já existe
-        const exists = await this.userExists(userData.loginName);
+        // Verifica se o usuário já existe usando método interno
+        const exists = await this._userExists(userData.loginName);
         if (exists) {
           throw new UserAlreadyExistsError(userData.loginName);
         }
@@ -361,8 +371,8 @@ export class ADService {
       let username = baseUsername;
       let counter = 1;
 
-      // Verifica se o nome de usuário já existe e sugere alternativas
-      while (await this.userExists(username)) {
+      // Usa método interno para evitar deadlock
+      while (await this._userExists(username)) {
         username = `${baseUsername}${counter}`;
         counter++;
         
