@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 from pydantic_settings import BaseSettings
-from pydantic import field_validator, AnyHttpUrl
+from pydantic import field_validator
 import os
 from functools import lru_cache
 
@@ -15,16 +15,21 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: List[str] = ["*"]
     
     # CORS
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    BACKEND_CORS_ORIGINS: List[str] = []
     
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            if not v.strip():
+                return []
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",") if i.strip()]
+            # Se começar com "[", deixa o Pydantic fazer o parse como JSON
             return v
-        raise ValueError(v)
+        elif isinstance(v, list):
+            return v
+        return []
     
     # Database
     DATABASE_URL: Optional[str] = None
