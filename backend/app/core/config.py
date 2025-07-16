@@ -14,22 +14,25 @@ class Settings(BaseSettings):
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
     ALLOWED_HOSTS: List[str] = ["*"]
     
-    # CORS
-    BACKEND_CORS_ORIGINS: List[str] = []
+    # CORS - Using string to avoid JSON parsing issues in Pydantic v2
+    _backend_cors_origins_raw: str = ""
     
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @field_validator("_backend_cors_origins_raw", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        if isinstance(v, str):
-            if not v.strip():
-                return []
-            if not v.startswith("["):
-                return [i.strip() for i in v.split(",") if i.strip()]
-            # Se começar com "[", deixa o Pydantic fazer o parse como JSON
-            return v
-        elif isinstance(v, list):
-            return v
-        return []
+    def validate_cors_origins_raw(cls, v):
+        if v is None:
+            return ""
+        return str(v)
+    
+    @property
+    def BACKEND_CORS_ORIGINS(self) -> List[str]:
+        """Parse CORS origins from string to list"""
+        if not self._backend_cors_origins_raw.strip():
+            return []
+        
+        # Handle CSV format
+        origins = [origin.strip() for origin in self._backend_cors_origins_raw.split(",") if origin.strip()]
+        return origins
     
     # Database
     DATABASE_URL: Optional[str] = None
@@ -62,7 +65,14 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
     
-    model_config = {"env_file": ".env", "case_sensitive": True}
+    model_config = {
+        "env_file": ".env", 
+        "case_sensitive": True,
+        # Map environment variable to internal field
+        "field_aliases": {
+            "_backend_cors_origins_raw": "BACKEND_CORS_ORIGINS"
+        }
+    }
 
 
 @lru_cache()
