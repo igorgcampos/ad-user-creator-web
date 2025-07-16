@@ -9,14 +9,14 @@ export interface ValidationTargets {
 }
 
 export const validate = (schemas: ValidationTargets) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     const errors: string[] = [];
 
     // Valida body
     if (schemas.body) {
       const { error } = schemas.body.validate(req.body);
       if (error) {
-        errors.push(error.details[0].message);
+        errors.push(error.details[0]?.message || 'Validation error');
       }
     }
 
@@ -24,7 +24,7 @@ export const validate = (schemas: ValidationTargets) => {
     if (schemas.query) {
       const { error } = schemas.query.validate(req.query);
       if (error) {
-        errors.push(error.details[0].message);
+        errors.push(error.details[0]?.message || 'Validation error');
       }
     }
 
@@ -32,7 +32,7 @@ export const validate = (schemas: ValidationTargets) => {
     if (schemas.params) {
       const { error } = schemas.params.validate(req.params);
       if (error) {
-        errors.push(error.details[0].message);
+        errors.push(error.details[0]?.message || 'Validation error');
       }
     }
 

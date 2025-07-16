@@ -86,7 +86,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -100,7 +100,7 @@ app.get('/health', (req, res) => {
 app.use('/api/v1/users', usersRouter);
 
 // Rota raiz
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({
     message: 'AD User Creator API',
     version: '1.0.0',

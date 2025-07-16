@@ -62,14 +62,14 @@ export const errorHandler = (
 
   // Erro genérico
   const response: ErrorResponse = {
-    detail: process.env.NODE_ENV === 'production' 
+    detail: process.env['NODE_ENV'] === 'production' 
       ? 'Internal server error' 
       : error.message,
     error_code: 'INTERNAL_SERVER_ERROR'
   };
 
   // Adiciona stack trace apenas em desenvolvimento
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env['NODE_ENV'] === 'development') {
     response.stack = error.stack;
   }
 

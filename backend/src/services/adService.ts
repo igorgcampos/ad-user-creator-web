@@ -198,6 +198,9 @@ export class ADService {
       }
 
       const user = results[0];
+      if (!user) {
+        return null;
+      }
       return {
         loginName: user.sAMAccountName,
         displayName: user.displayName,

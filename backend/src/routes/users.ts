@@ -48,6 +48,10 @@ router.get('/exists/:loginName',
   asyncErrorHandler(async (req: Request, res: Response) => {
     const { loginName } = req.params;
     
+    if (!loginName) {
+      throw new Error('Login name is required');
+    }
+    
     logger.info(`Verificando existência do usuário: ${loginName}`);
     
     const exists = await adService.userExists(loginName);
@@ -68,6 +72,10 @@ router.get('/info/:loginName',
   validateParams(loginNameParamSchema),
   asyncErrorHandler(async (req: Request, res: Response) => {
     const { loginName } = req.params;
+    
+    if (!loginName) {
+      throw new Error('Login name is required');
+    }
     
     logger.info(`Obtendo informações do usuário: ${loginName}`);
     
@@ -104,6 +112,10 @@ router.get('/suggest-username/:firstName/:lastName',
   asyncErrorHandler(async (req: Request, res: Response) => {
     const { firstName, lastName } = req.params;
     
+    if (!firstName || !lastName) {
+      throw new Error('First name and last name are required');
+    }
+    
     logger.info(`Gerando sugestão de nome de login para: ${firstName} ${lastName}`);
     
     const suggestedUsername = await adService.suggestUsername(firstName, lastName);
@@ -120,7 +132,7 @@ router.get('/suggest-username/:firstName/:lastName',
 
 // GET /users/connection-test - Testar conexão com AD
 router.get('/connection-test',
-  asyncErrorHandler(async (req: Request, res: Response) => {
+  asyncErrorHandler(async (_req: Request, res: Response) => {
     logger.info('Testando conexão com Active Directory');
     
     const connectionOk = await adService.testConnection();
