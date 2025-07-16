@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   # =============================================================================
-  # Backend - FastAPI Development Server
+  # Backend - Express + Node.js Development Server
   # =============================================================================
   backend:
     build:
@@ -37,9 +37,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ENVIRONMENT=development
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
+      - NODE_ENV=development
+      - PORT=8000
+      - LOG_LEVEL=debug
       - SECRET_KEY=dev-secret-key-not-for-production
       - BACKEND_CORS_ORIGINS=http://44.222.181.172:3000,https://44.222.181.172:3000,http://44.222.181.172,https://44.222.181.172
       - AD_SERVER=ldap://localhost:389
@@ -49,14 +49,24 @@ services:
       - AD_PASSWORD=password
       - AD_USE_SSL=false
       - AD_USERS_OU=OU=Users,DC=example,DC=local
+      - AD_TIMEOUT=10000
+      - RATE_LIMIT_REQUESTS=1000
+      - RATE_LIMIT_WINDOW=3600
+      - MIN_PASSWORD_LENGTH=8
+      - PASSWORD_REQUIRE_UPPERCASE=true
+      - PASSWORD_REQUIRE_LOWERCASE=true
+      - PASSWORD_REQUIRE_NUMBERS=true
+      - PASSWORD_REQUIRE_SPECIAL=true
     volumes:
-      - ./backend/app:/app/app:ro
-      - ./backend/requirements.txt:/app/requirements.txt:ro
+      - ./backend/src:/app/src:ro
+      - ./backend/package.json:/app/package.json:ro
+      - ./backend/package-lock.json:/app/package-lock.json:ro
+      - ./backend/tsconfig.json:/app/tsconfig.json:ro
+      - ./backend/nodemon.json:/app/nodemon.json:ro
       - backend-dev-data:/app/data
       - backend-dev-logs:/app/logs
     command: >
-      sh -c "pip install -r requirements.txt && 
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug"
+      sh -c "npm install && npm run dev"
     networks:
       - dev-network
     restart: unless-stopped

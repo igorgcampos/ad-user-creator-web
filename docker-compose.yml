@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   # =============================================================================
-  # Backend - FastAPI Application
+  # Backend - Express + Node.js Application
   # =============================================================================
   backend:
     build:
@@ -30,9 +30,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ENVIRONMENT=production
-      - DEBUG=false
-      - LOG_LEVEL=INFO
+      - NODE_ENV=production
+      - PORT=8000
+      - LOG_LEVEL=info
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
       - BACKEND_CORS_ORIGINS=http://44.222.181.172:3000,https://44.222.181.172:3000,http://44.222.181.172,https://44.222.181.172
       - AD_SERVER=${AD_SERVER:-ldap://localhost:389}
@@ -42,6 +42,14 @@ services:
       - AD_PASSWORD=${AD_PASSWORD:-password}
       - AD_USE_SSL=${AD_USE_SSL:-false}
       - AD_USERS_OU=${AD_USERS_OU:-OU=Users,DC=example,DC=local}
+      - AD_TIMEOUT=${AD_TIMEOUT:-10000}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-3600}
+      - MIN_PASSWORD_LENGTH=${MIN_PASSWORD_LENGTH:-8}
+      - PASSWORD_REQUIRE_UPPERCASE=${PASSWORD_REQUIRE_UPPERCASE:-true}
+      - PASSWORD_REQUIRE_LOWERCASE=${PASSWORD_REQUIRE_LOWERCASE:-true}
+      - PASSWORD_REQUIRE_NUMBERS=${PASSWORD_REQUIRE_NUMBERS:-true}
+      - PASSWORD_REQUIRE_SPECIAL=${PASSWORD_REQUIRE_SPECIAL:-true}
     volumes:
       - backend-data:/app/data
       - backend-logs:/app/logs
