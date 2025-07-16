@@ -65,7 +65,7 @@ class UserCreateResponse(BaseModel):
     
     success: bool = Field(..., description="Indica se a operação foi bem-sucedida")
     message: str = Field(..., description="Mensagem de resposta")
-    user: Optional["UserInfo"] = Field(None, description="Informações do usuário criado")
+    user: Optional[UserInfo] = Field(None, description="Informações do usuário criado")
     
     model_config = {
         "json_schema_extra": {
