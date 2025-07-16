@@ -1,6 +1,10 @@
 import * as ldap from 'ldapjs';
 import config from '../config';
 import logger from '../config/logger';
+
+// Declarações para contornar problemas de tipos
+declare const Buffer: any;
+declare const process: any;
 import { 
   UserCreateRequest, 
   UserInfo, 
@@ -70,7 +74,7 @@ export class ADService {
         if (err) {
           logger.error('❌ Erro de bind LDAP:', err);
           logger.error(`❌ Detalhes do erro: ${err.message}`);
-          logger.error(`❌ Código do erro: ${err.code || 'N/A'}`);
+          logger.error(`❌ Código do erro: ${(err as any).code || 'N/A'}`);
           logger.error(`❌ DN usado: ${bindDN}`);
           logger.error(`❌ Servidor: ${config.ad.server}`);
           reject(new ADConnectionError(`Erro de autenticação LDAP: ${err.message}`));
