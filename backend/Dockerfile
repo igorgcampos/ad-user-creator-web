@@ -45,7 +45,8 @@ FROM node:20-alpine as runtime
 
 # Configurações de runtime
 ENV NODE_ENV=production \
-    PATH="/app/node_modules/.bin:$PATH"
+    PATH="/app/node_modules/.bin:$PATH" \
+    DOCKER_CONTAINER=true
 
 # Instala apenas dependências de runtime necessárias
 RUN apk add --no-cache \

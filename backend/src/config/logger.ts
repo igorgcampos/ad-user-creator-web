@@ -31,16 +31,17 @@ const logger = winston.createLogger({
   ],
 });
 
-// Se não estiver em produção, adiciona log no console
-if (config.env !== 'production') {
-  logger.add(
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    })
-  );
-}
+// Sempre adiciona log no console (importante para Docker containers)
+logger.add(
+  new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.colorize(),
+      winston.format.printf(({ timestamp, level, message, ...meta }) => {
+        return `${timestamp} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ''}`;
+      })
+    ),
+  })
+);
 
 export default logger; 

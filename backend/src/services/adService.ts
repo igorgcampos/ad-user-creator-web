@@ -56,18 +56,26 @@ export class ADService {
   private async bind(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
+        logger.error('❌ Cliente LDAP não está inicializado');
         reject(new ADConnectionError('Cliente LDAP não inicializado'));
         return;
       }
 
       const bindDN = `${config.ad.username}@${config.ad.domain}`;
+      logger.info(`🔑 Tentando bind LDAP com DN: ${bindDN}`);
+      logger.info(`🌐 Servidor AD: ${config.ad.server}`);
+      logger.info(`🏢 Domínio AD: ${config.ad.domain}`);
       
       this.client.bind(bindDN, config.ad.password, (err) => {
         if (err) {
-          logger.error('LDAP bind error:', err);
+          logger.error('❌ Erro de bind LDAP:', err);
+          logger.error(`❌ Detalhes do erro: ${err.message}`);
+          logger.error(`❌ Código do erro: ${err.code || 'N/A'}`);
+          logger.error(`❌ DN usado: ${bindDN}`);
+          logger.error(`❌ Servidor: ${config.ad.server}`);
           reject(new ADConnectionError(`Erro de autenticação LDAP: ${err.message}`));
         } else {
-          logger.debug('LDAP bind successful');
+          logger.info('✅ Bind LDAP realizado com sucesso');
           resolve();
         }
       });
@@ -94,37 +102,64 @@ export class ADService {
 
   // Métodos para controle do mutex
   private async acquireConnection(): Promise<void> {
+    logger.info(`🔒 Tentando adquirir mutex de conexão...`);
+    logger.info(`🔒 Mutex status: ${this.connectionMutex ? 'ocupado' : 'livre'}`);
+    logger.info(`🔒 Fila de espera: ${this.waitingQueue.length} item(s)`);
+    
     if (this.connectionMutex) {
       // Se já está em uso, esperar na fila
+      logger.info(`⏳ Mutex ocupado, entrando na fila de espera...`);
       await new Promise<void>((resolve) => {
         this.waitingQueue.push(resolve);
+        logger.info(`⏳ Adicionado à fila. Posição: ${this.waitingQueue.length}`);
       });
+      logger.info(`✅ Saiu da fila de espera`);
     }
+    
     this.connectionMutex = true;
+    logger.info(`🔒 Mutex adquirido com sucesso`);
   }
 
   private releaseConnection(): void {
+    logger.info(`🔓 Liberando mutex de conexão...`);
     this.connectionMutex = false;
     const next = this.waitingQueue.shift();
-    if (next) next();
+    if (next) {
+      logger.info(`🔓 Notificando próximo da fila. Restam: ${this.waitingQueue.length}`);
+      next();
+    } else {
+      logger.info(`🔓 Nenhum item na fila de espera`);
+    }
+    logger.info(`🔓 Mutex liberado`);
   }
 
   private async withConnection<T>(operation: () => Promise<T>): Promise<T> {
+    logger.info('🔒 Tentando adquirir conexão LDAP...');
     await this.acquireConnection();
+    logger.info('✅ Conexão LDAP adquirida com sucesso');
+    
     try {
-      return await operation();
+      logger.info('🔄 Executando operação LDAP...');
+      const result = await operation();
+      logger.info('✅ Operação LDAP concluída com sucesso');
+      return result;
     } catch (error) {
       // Em caso de erro, tentar recuperar a conexão
-      logger.error('Error in withConnection, attempting to recover:', error);
+      logger.error('❌ Erro em withConnection, tentando recuperar conexão:', error);
       try {
+        logger.info('🔄 Tentando unbind para recuperação...');
         await this.unbind();
+        logger.info('🔄 Reinicializando cliente LDAP...');
         this.initializeClient();
+        logger.info('✅ Cliente LDAP reinicializado');
       } catch (recoveryError) {
-        logger.error('Failed to recover connection:', recoveryError);
+        logger.error('❌ Falha ao recuperar conexão:', recoveryError);
       }
       throw error;
     } finally {
+      logger.info('🔓 Liberando conexão LDAP...');
       this.releaseConnection();
+      logger.info('✅ Conexão LDAP liberada');
     }
   }
 
@@ -299,18 +334,29 @@ export class ADService {
   }
 
   public async createUser(userData: UserCreateRequest): Promise<UserInfo> {
+    logger.info(`🚀 Iniciando criação de usuário: ${userData.loginName}`);
+    logger.info(`Dados recebidos: ${JSON.stringify({ firstName: userData.firstName, lastName: userData.lastName, loginName: userData.loginName })}`);
+    
     return this.withConnection(async () => {
       try {
+        logger.info(`🔍 Verificando se usuário ${userData.loginName} já existe...`);
+        
         // Verifica se o usuário já existe usando método interno
         const exists = await this._userExists(userData.loginName);
         if (exists) {
+          logger.warn(`❌ Usuário ${userData.loginName} já existe no AD`);
           throw new UserAlreadyExistsError(userData.loginName);
         }
-
+        
+        logger.info(`✅ Usuário ${userData.loginName} não existe, prosseguindo com criação...`);
+        
+        logger.info(`🔐 Fazendo bind com usuário de serviço: ${config.ad.username}`);
         await this.bind();
+        logger.info(`✅ Bind realizado com sucesso`);
 
         // Cria o Distinguished Name para o novo usuário
         const userDN = `CN=${userData.firstName} ${userData.lastName},${config.ad.usersOU}`;
+        logger.info(`📍 DN do usuário: ${userDN}`);
         
         // Atributos do usuário
         const userEntry = {
@@ -326,13 +372,21 @@ export class ADService {
           userAccountControl: 512 // Conta normal habilitada
         };
 
-        // Adiciona o usuário
-        await this.addUser(userDN, userEntry);
-        
-        await this.unbind();
+        logger.info(`📋 Atributos do usuário preparados`);
+        logger.info(`👤 sAMAccountName: ${userEntry.sAMAccountName}`);
+        logger.info(`📧 userPrincipalName: ${userEntry.userPrincipalName}`);
+        logger.info(`🏢 OU de destino: ${config.ad.usersOU}`);
 
-        // Retorna informações do usuário criado
-        return {
+        // Adiciona o usuário
+        logger.info(`➕ Adicionando usuário ao AD...`);
+        await this.addUser(userDN, userEntry);
+        logger.info(`✅ Usuário adicionado com sucesso ao AD`);
+        
+        logger.info(`🔓 Fazendo unbind da conexão...`);
+        await this.unbind();
+        logger.info(`✅ Unbind realizado com sucesso`);
+
+        const userInfo = {
           loginName: userData.loginName,
           displayName: `${userData.firstName} ${userData.lastName}`,
           email: `${userData.loginName}@${config.ad.domain}`,
@@ -340,9 +394,21 @@ export class ADService {
           created_at: new Date()
         };
 
+        logger.info(`🎉 Usuário ${userData.loginName} criado com sucesso!`);
+        logger.info(`📊 Informações do usuário: ${JSON.stringify(userInfo)}`);
+
+        // Retorna informações do usuário criado
+        return userInfo;
+
       } catch (error) {
-        await this.unbind();
-        logger.error('Error creating user:', error);
+        logger.error(`❌ Erro durante criação do usuário ${userData.loginName}:`, error);
+        
+        try {
+          await this.unbind();
+          logger.info(`🔓 Unbind de emergência realizado`);
+        } catch (unbindError) {
+          logger.error(`❌ Erro durante unbind de emergência:`, unbindError);
+        }
         
         if (error instanceof UserAlreadyExistsError) {
           throw error;
