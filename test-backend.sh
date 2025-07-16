@@ -131,5 +131,13 @@ log_info "Verifique os logs acima para detalhes das operações"
 kill $LOGS_PID 2>/dev/null
 
 echo
+log_info "===== COMANDOS DE EMERGÊNCIA ====="
+echo 
+log_warning "Se o serviço travar (deadlock), execute:"
+echo "curl -X POST http://localhost:8000/api/v1/users/force-reset"
+echo
 log_info "Para ver apenas os logs do backend:"
-echo "docker-compose logs -f backend" 
+echo "docker-compose logs -f backend"
+echo
+log_info "Para reiniciar completamente:"
+echo "docker-compose down && docker-compose up -d" 

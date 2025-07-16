@@ -150,4 +150,31 @@ router.get('/connection-test',
   })
 );
 
+// POST /users/force-reset - Forçar reset do serviço AD (emergência)
+router.post('/force-reset',
+  asyncErrorHandler(async (req: Request, res: Response) => {
+    logger.warn('🚨 Rota de reset de emergência chamada');
+    
+    try {
+      adService.forceReset();
+      
+      const response = {
+        success: true,
+        message: 'Reset do serviço AD realizado com sucesso',
+        timestamp: new Date().toISOString()
+      };
+      
+      logger.info('Reset de emergência concluído com sucesso');
+      res.json(response);
+    } catch (error) {
+      logger.error('Erro durante reset de emergência:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro durante reset do serviço AD',
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+    }
+  })
+);
+
 export default router; 

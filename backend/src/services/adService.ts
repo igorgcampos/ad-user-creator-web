@@ -5,6 +5,8 @@ import logger from '../config/logger';
 // Declarações para contornar problemas de tipos
 declare const Buffer: any;
 declare const process: any;
+declare const setTimeout: any;
+declare const clearTimeout: any;
 import { 
   UserCreateRequest, 
   UserInfo, 
@@ -70,7 +72,15 @@ export class ADService {
       logger.info(`🌐 Servidor AD: ${config.ad.server}`);
       logger.info(`🏢 Domínio AD: ${config.ad.domain}`);
       
+      // Timeout manual para bind LDAP
+      const timeoutId = setTimeout(() => {
+        logger.error('❌ Timeout no bind LDAP após 15 segundos');
+        reject(new ADConnectionError('Timeout na autenticação LDAP'));
+      }, 15000);
+      
       this.client.bind(bindDN, config.ad.password, (err) => {
+        clearTimeout(timeoutId);
+        
         if (err) {
           logger.error('❌ Erro de bind LDAP:', err);
           logger.error(`❌ Detalhes do erro: ${err.message}`);
@@ -137,17 +147,55 @@ export class ADService {
     logger.info(`🔓 Mutex liberado`);
   }
 
+  // Método para forçar reset do serviço em caso de deadlock
+  public forceReset(): void {
+    logger.warn('🔧 Forçando reset do serviço AD devido a deadlock...');
+    
+    // Força liberação do mutex
+    this.connectionMutex = false;
+    
+    // Processa toda a fila de espera com erro
+    while (this.waitingQueue.length > 0) {
+      const next = this.waitingQueue.shift();
+      if (next) {
+        logger.info(`🔧 Liberando item da fila com erro...`);
+        next();
+      }
+    }
+    
+    // Reinicializa cliente
+    try {
+      if (this.client) {
+        this.client.destroy();
+      }
+    } catch (error) {
+      logger.error('Erro ao destruir cliente durante reset:', error);
+    }
+    
+    this.initializeClient();
+    logger.info('✅ Reset do serviço AD concluído');
+  }
+
   private async withConnection<T>(operation: () => Promise<T>): Promise<T> {
     logger.info('🔒 Tentando adquirir conexão LDAP...');
     await this.acquireConnection();
     logger.info('✅ Conexão LDAP adquirida com sucesso');
     
+    // Timeout de segurança para toda a operação
+    const operationTimeout = setTimeout(() => {
+      logger.error('❌ Timeout geral da operação LDAP após 30 segundos');
+      logger.error('❌ Forçando liberação do mutex...');
+      this.releaseConnection();
+    }, 30000);
+    
     try {
       logger.info('🔄 Executando operação LDAP...');
       const result = await operation();
       logger.info('✅ Operação LDAP concluída com sucesso');
+      clearTimeout(operationTimeout);
       return result;
     } catch (error) {
+      clearTimeout(operationTimeout);
       // Em caso de erro, tentar recuperar a conexão
       logger.error('❌ Erro em withConnection, tentando recuperar conexão:', error);
       try {
