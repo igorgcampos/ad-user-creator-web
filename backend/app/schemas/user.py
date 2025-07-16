@@ -1,6 +1,5 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
 import re
 from datetime import datetime
 
@@ -65,7 +64,7 @@ class UserCreateResponse(BaseModel):
     
     success: bool = Field(..., description="Indica se a operação foi bem-sucedida")
     message: str = Field(..., description="Mensagem de resposta")
-    user: Optional[UserInfo] = Field(None, description="Informações do usuário criado")
+    user: UserInfo | None = Field(None, description="Informações do usuário criado")
     
     model_config = {
         "json_schema_extra": {
@@ -166,7 +165,7 @@ class ErrorResponse(BaseModel):
     """Schema para resposta de erro"""
     
     detail: str = Field(..., description="Detalhes do erro")
-    error_code: Optional[str] = Field(None, description="Código do erro")
+    error_code: str | None = Field(None, description="Código do erro")
     
     model_config = {
         "json_schema_extra": {

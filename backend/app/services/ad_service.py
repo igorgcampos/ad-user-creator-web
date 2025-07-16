@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from datetime import datetime
 import hashlib
 import json
@@ -175,7 +175,7 @@ class ADService:
             created_at=created_at
         )
     
-    async def get_user_info(self, login_name: str) -> Optional[UserInfo]:
+    async def get_user_info(self, login_name: str) -> UserInfo | None:
         """Obtém informações do usuário do Active Directory"""
         try:
             await self.test_connection()
