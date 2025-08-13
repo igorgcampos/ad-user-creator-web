@@ -1,12 +1,8 @@
 import * as ldap from 'ldapjs';
+import { Mutex } from 'async-mutex';
+import NodeCache from 'node-cache';
 import config from '../config';
 import logger from '../config/logger';
-
-// Declarações para contornar problemas de tipos
-declare const Buffer: any;
-declare const process: any;
-declare const setTimeout: any;
-declare const clearTimeout: any;
 import { 
   UserCreateRequest, 
   UserInfo, 
@@ -21,91 +17,225 @@ import {
   PasswordValidationError 
 } from '../types/errors';
 
-export class ADService {
-  private client: ldap.Client | null = null;
-  
-  // Mutex para controlar acesso à conexão LDAP
-  private connectionMutex = false;
-  private waitingQueue: Array<() => void> = [];
+// LDAP Input Sanitization
+function escapeLDAPFilter(input: string): string {
+  return input
+    .replace(/\\/g, '\\5c')
+    .replace(/\*/g, '\\2a')
+    .replace(/\(/g, '\\28')
+    .replace(/\)/g, '\\29')
+    .replace(/\u0000/g, '\\00');
+}
 
-  constructor() {
-    this.initializeClient();
-  }
+// Circuit Breaker Pattern
+class CircuitBreaker {
+  private failures = 0;
+  private readonly threshold = 5;
+  private readonly timeout = 60000;
+  private state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
+  private lastFailureTime = 0;
 
-  private initializeClient(): void {
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'HALF_OPEN';
+        logger.info('Circuit breaker moving to HALF_OPEN state');
+      } else {
+        throw new Error('Circuit breaker is OPEN - service unavailable');
+      }
+    }
+
     try {
-      this.client = ldap.createClient({
-        url: config.ad.server,
-        timeout: config.ad.timeout,
-        connectTimeout: config.ad.timeout,
-        tlsOptions: config.ad.useSSL ? { rejectUnauthorized: false } : undefined
-      });
-
-      this.client.on('error', (err) => {
-        logger.error('LDAP client error:', err);
-      });
-
-      this.client.on('connect', () => {
-        logger.info('LDAP client connected successfully');
-      });
-
-      this.client.on('disconnect', () => {
-        logger.info('LDAP client disconnected');
-      });
-
+      const result = await operation();
+      this.onSuccess();
+      return result;
     } catch (error) {
-      logger.error('Failed to initialize LDAP client:', error);
-      throw new ADConnectionError('Falha ao inicializar cliente LDAP');
+      this.onFailure();
+      throw error;
     }
   }
 
-  private async bind(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.client) {
-        logger.error('❌ Cliente LDAP não está inicializado');
-        reject(new ADConnectionError('Cliente LDAP não inicializado'));
+  private onSuccess(): void {
+    this.failures = 0;
+    this.state = 'CLOSED';
+  }
+
+  private onFailure(): void {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+    if (this.failures >= this.threshold) {
+      this.state = 'OPEN';
+      logger.warn(`Circuit breaker opened after ${this.failures} failures`);
+    }
+  }
+}
+
+// Connection Pool Management
+class LDAPConnectionPool {
+  private pool: ldap.Client[] = [];
+  private activeConnections = 0;
+  private readonly maxConnections = 10;
+  private readonly minConnections = 2;
+  private readonly connectionMutex = new Mutex();
+  private isDestroyed = false;
+
+  async acquire(): Promise<ldap.Client> {
+    const release = await this.connectionMutex.acquire();
+    try {
+      if (this.isDestroyed) {
+        throw new Error('Connection pool has been destroyed');
+      }
+
+      // Try to get an existing connection from the pool
+      if (this.pool.length > 0) {
+        const client = this.pool.pop()!;
+        if (this.isConnectionHealthy(client)) {
+          return client;
+        } else {
+          this.destroyConnection(client);
+        }
+      }
+
+      // Create new connection if under limit
+      if (this.activeConnections < this.maxConnections) {
+        return await this.createConnection();
+      }
+
+      // Wait for a connection to become available
+      throw new Error('Connection pool exhausted');
+    } finally {
+      release();
+    }
+  }
+
+  async release(client: ldap.Client): Promise<void> {
+    const release = await this.connectionMutex.acquire();
+    try {
+      if (this.isDestroyed || !this.isConnectionHealthy(client)) {
+        this.destroyConnection(client);
         return;
       }
 
+      if (this.pool.length < this.minConnections) {
+        this.pool.push(client);
+      } else {
+        this.destroyConnection(client);
+      }
+    } finally {
+      release();
+    }
+  }
+
+  private async createConnection(): Promise<ldap.Client> {
+    const client = ldap.createClient({
+      url: config.ad.server,
+      timeout: config.ad.timeout,
+      connectTimeout: config.ad.timeout,
+      tlsOptions: config.ad.useSSL ? { rejectUnauthorized: false } : undefined
+    });
+
+    this.activeConnections++;
+    
+    // Set up event listeners with proper cleanup
+    const errorHandler = (err: Error) => {
+      logger.error('LDAP pool connection error:', { error: err.message });
+    };
+    
+    client.on('error', errorHandler);
+    client.on('disconnect', () => {
+      this.activeConnections = Math.max(0, this.activeConnections - 1);
+    });
+
+    return client;
+  }
+
+  private isConnectionHealthy(client: ldap.Client): boolean {
+    try {
+      return client && typeof client.bind === 'function';
+    } catch {
+      return false;
+    }
+  }
+
+  private destroyConnection(client: ldap.Client): void {
+    try {
+      if (client && typeof client.destroy === 'function') {
+        client.destroy();
+      }
+      this.activeConnections = Math.max(0, this.activeConnections - 1);
+    } catch (error) {
+      logger.error('Error destroying connection:', error);
+    }
+  }
+
+  async destroy(): Promise<void> {
+    const release = await this.connectionMutex.acquire();
+    try {
+      this.isDestroyed = true;
+      
+      // Destroy all pooled connections
+      while (this.pool.length > 0) {
+        const client = this.pool.pop()!;
+        this.destroyConnection(client);
+      }
+    } finally {
+      release();
+    }
+  }
+}
+
+export class ADService {
+  private connectionPool: LDAPConnectionPool;
+  private circuitBreaker: CircuitBreaker;
+  private cache: NodeCache;
+
+  constructor() {
+    this.connectionPool = new LDAPConnectionPool();
+    this.circuitBreaker = new CircuitBreaker();
+    this.cache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 minute cache
+  }
+
+  private async withConnection<T>(operation: (client: ldap.Client) => Promise<T>): Promise<T> {
+    return this.circuitBreaker.execute(async () => {
+      const client = await this.connectionPool.acquire();
+      try {
+        return await operation(client);
+      } finally {
+        await this.connectionPool.release(client);
+      }
+    });
+  }
+
+  private async bind(client: ldap.Client): Promise<void> {
+    return new Promise((resolve, reject) => {
       const bindDN = `${config.ad.username}@${config.ad.domain}`;
-      logger.info(`🔑 Tentando bind LDAP com DN: ${bindDN}`);
-      logger.info(`🌐 Servidor AD: ${config.ad.server}`);
-      logger.info(`🏢 Domínio AD: ${config.ad.domain}`);
+      logger.info('🔑 Attempting LDAP bind');
       
       // Timeout manual para bind LDAP
       const timeoutId = setTimeout(() => {
-        logger.error('❌ Timeout no bind LDAP após 15 segundos');
-        reject(new ADConnectionError('Timeout na autenticação LDAP'));
+        logger.error('❌ LDAP bind timeout after 15 seconds');
+        reject(new ADConnectionError('LDAP authentication timeout'));
       }, 15000);
       
-      this.client.bind(bindDN, config.ad.password, (err) => {
+      client.bind(bindDN, config.ad.password, (err) => {
         clearTimeout(timeoutId);
         
         if (err) {
-          logger.error('❌ Erro de bind LDAP:', err);
-          logger.error(`❌ Detalhes do erro: ${err.message}`);
-          logger.error(`❌ Código do erro: ${(err as any).code || 'N/A'}`);
-          logger.error(`❌ DN usado: ${bindDN}`);
-          logger.error(`❌ Servidor: ${config.ad.server}`);
-          reject(new ADConnectionError(`Erro de autenticação LDAP: ${err.message}`));
+          logger.error('❌ LDAP bind error:', { error: err.message, code: (err as any).code });
+          reject(new ADConnectionError(`LDAP authentication error: ${err.message}`));
         } else {
-          logger.info('✅ Bind LDAP realizado com sucesso');
+          logger.info('✅ LDAP bind successful');
           resolve();
         }
       });
     });
   }
 
-  private async unbind(): Promise<void> {
+  private async unbind(client: ldap.Client): Promise<void> {
     return new Promise((resolve) => {
-      if (!this.client) {
-        resolve();
-        return;
-      }
-
-      this.client.unbind((err) => {
+      client.unbind((err) => {
         if (err) {
-          logger.error('LDAP unbind error:', err);
+          logger.error('LDAP unbind error:', { error: err.message });
         } else {
           logger.debug('LDAP unbind successful');
         }
@@ -114,114 +244,25 @@ export class ADService {
     });
   }
 
-  // Métodos para controle do mutex
-  private async acquireConnection(): Promise<void> {
-    logger.info(`🔒 Tentando adquirir mutex de conexão...`);
-    logger.info(`🔒 Mutex status: ${this.connectionMutex ? 'ocupado' : 'livre'}`);
-    logger.info(`🔒 Fila de espera: ${this.waitingQueue.length} item(s)`);
-    
-    if (this.connectionMutex) {
-      // Se já está em uso, esperar na fila
-      logger.info(`⏳ Mutex ocupado, entrando na fila de espera...`);
-      await new Promise<void>((resolve) => {
-        this.waitingQueue.push(resolve);
-        logger.info(`⏳ Adicionado à fila. Posição: ${this.waitingQueue.length}`);
-      });
-      logger.info(`✅ Saiu da fila de espera`);
-    }
-    
-    this.connectionMutex = true;
-    logger.info(`🔒 Mutex adquirido com sucesso`);
-  }
-
-  private releaseConnection(): void {
-    logger.info(`🔓 Liberando mutex de conexão...`);
-    this.connectionMutex = false;
-    const next = this.waitingQueue.shift();
-    if (next) {
-      logger.info(`🔓 Notificando próximo da fila. Restam: ${this.waitingQueue.length}`);
-      next();
-    } else {
-      logger.info(`🔓 Nenhum item na fila de espera`);
-    }
-    logger.info(`🔓 Mutex liberado`);
-  }
-
-  // Método para forçar reset do serviço em caso de deadlock
-  public forceReset(): void {
-    logger.warn('🔧 Forçando reset do serviço AD devido a deadlock...');
-    
-    // Força liberação do mutex
-    this.connectionMutex = false;
-    
-    // Processa toda a fila de espera com erro
-    while (this.waitingQueue.length > 0) {
-      const next = this.waitingQueue.shift();
-      if (next) {
-        logger.info(`🔧 Liberando item da fila com erro...`);
-        next();
-      }
-    }
-    
-    // Reinicializa cliente
-    try {
-      if (this.client) {
-        this.client.destroy();
-      }
-    } catch (error) {
-      logger.error('Erro ao destruir cliente durante reset:', error);
-    }
-    
-    this.initializeClient();
-    logger.info('✅ Reset do serviço AD concluído');
-  }
-
-  private async withConnection<T>(operation: () => Promise<T>): Promise<T> {
-    logger.info('🔒 Tentando adquirir conexão LDAP...');
-    await this.acquireConnection();
-    logger.info('✅ Conexão LDAP adquirida com sucesso');
-    
-    // Timeout de segurança para toda a operação
-    const operationTimeout = setTimeout(() => {
-      logger.error('❌ Timeout geral da operação LDAP após 30 segundos');
-      logger.error('❌ Forçando liberação do mutex...');
-      this.releaseConnection();
-    }, 30000);
+  // Método para forçar reset do serviço em caso de problemas
+  public async forceReset(): Promise<void> {
+    logger.warn('🔧 Forcing AD service reset...');
     
     try {
-      logger.info('🔄 Executando operação LDAP...');
-      const result = await operation();
-      logger.info('✅ Operação LDAP concluída com sucesso');
-      clearTimeout(operationTimeout);
-      return result;
+      await this.connectionPool.destroy();
+      this.connectionPool = new LDAPConnectionPool();
+      this.circuitBreaker = new CircuitBreaker();
+      this.cache.flushAll();
+      logger.info('✅ AD service reset completed');
     } catch (error) {
-      clearTimeout(operationTimeout);
-      // Em caso de erro, tentar recuperar a conexão
-      logger.error('❌ Erro em withConnection, tentando recuperar conexão:', error);
-      try {
-        logger.info('🔄 Tentando unbind para recuperação...');
-        await this.unbind();
-        logger.info('🔄 Reinicializando cliente LDAP...');
-        this.initializeClient();
-        logger.info('✅ Cliente LDAP reinicializado');
-      } catch (recoveryError) {
-        logger.error('❌ Falha ao recuperar conexão:', recoveryError);
-      }
+      logger.error('Error during service reset:', error);
       throw error;
-    } finally {
-      logger.info('🔓 Liberando conexão LDAP...');
-      this.releaseConnection();
-      logger.info('✅ Conexão LDAP liberada');
     }
   }
 
-  private async search(baseDN: string, filter: string, attributes?: string[]): Promise<LDAPUser[]> {
-    return new Promise((resolve, reject) => {
-      if (!this.client) {
-        reject(new ADConnectionError('Cliente LDAP não inicializado'));
-        return;
-      }
 
+  private async search(client: ldap.Client, baseDN: string, filter: string, attributes?: string[]): Promise<LDAPUser[]> {
+    return new Promise((resolve, reject) => {
       const options = {
         filter: filter,
         scope: 'sub' as const,
@@ -232,10 +273,10 @@ export class ADService {
 
       const results: LDAPUser[] = [];
 
-      this.client.search(baseDN, options, (err, res) => {
+      client.search(baseDN, options, (err, res) => {
         if (err) {
-          logger.error('LDAP search error:', err);
-          reject(new ADConnectionError(`Erro na busca LDAP: ${err.message}`));
+          logger.error('LDAP search error:', { error: err.message });
+          reject(new ADConnectionError(`LDAP search error: ${err.message}`));
           return;
         }
 
@@ -266,14 +307,14 @@ export class ADService {
         });
 
         res.on('error', (err) => {
-          logger.error('LDAP search result error:', err);
-          reject(new ADConnectionError(`Erro na busca LDAP: ${err.message}`));
+          logger.error('LDAP search result error:', { error: err.message });
+          reject(new ADConnectionError(`LDAP search error: ${err.message}`));
         });
 
         res.on('end', (result) => {
           if (result && result.status !== 0) {
-            logger.error('LDAP search failed:', result);
-            reject(new ADConnectionError(`Busca LDAP falhou: status ${result.status}`));
+            logger.error('LDAP search failed:', { status: result.status });
+            reject(new ADConnectionError(`LDAP search failed: status ${result.status}`));
           } else {
             logger.debug(`LDAP search completed, found ${results.length} results`);
             resolve(results);
@@ -283,20 +324,32 @@ export class ADService {
     });
   }
 
-  // Métodos internos sem mutex (para uso dentro de withConnection)
-  private async _userExists(loginName: string): Promise<boolean> {
+  // Internal methods with caching and LDAP injection prevention
+  private async _userExists(client: ldap.Client, loginName: string): Promise<boolean> {
+    // Check cache first
+    const cacheKey = `user_exists_${loginName}`;
+    const cached = this.cache.get<boolean>(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
-      await this.bind();
+      await this.bind(client);
       
-      const filter = `(sAMAccountName=${loginName})`;
-      const results = await this.search(config.ad.baseDN, filter, ['sAMAccountName']);
+      // Escape input to prevent LDAP injection
+      const escapedLoginName = escapeLDAPFilter(loginName);
+      const filter = `(sAMAccountName=${escapedLoginName})`;
+      const results = await this.search(client, config.ad.baseDN, filter, ['sAMAccountName']);
       
-      await this.unbind();
+      await this.unbind(client);
       
-      return results.length > 0;
+      const exists = results.length > 0;
+      // Cache result for 5 minutes
+      this.cache.set(cacheKey, exists, 300);
+      return exists;
     } catch (error) {
       try {
-        await this.unbind();
+        await this.unbind(client);
       } catch (unbindError) {
         logger.error('Error during unbind in _userExists:', unbindError);
       }
@@ -305,33 +358,50 @@ export class ADService {
     }
   }
 
-  private async _getUserInfo(loginName: string): Promise<UserInfo | null> {
+  private async _getUserInfo(client: ldap.Client, loginName: string): Promise<UserInfo | null> {
+    // Check cache first
+    const cacheKey = `user_info_${loginName}`;
+    const cached = this.cache.get<UserInfo | null>(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
-      await this.bind();
+      await this.bind(client);
       
-      const filter = `(sAMAccountName=${loginName})`;
-      const results = await this.search(config.ad.baseDN, filter);
+      // Escape input to prevent LDAP injection
+      const escapedLoginName = escapeLDAPFilter(loginName);
+      const filter = `(sAMAccountName=${escapedLoginName})`;
+      const results = await this.search(client, config.ad.baseDN, filter);
       
-      await this.unbind();
+      await this.unbind(client);
       
       if (results.length === 0) {
+        // Cache null result for 1 minute
+        this.cache.set(cacheKey, null, 60);
         return null;
       }
 
       const user = results[0];
       if (!user) {
+        this.cache.set(cacheKey, null, 60);
         return null;
       }
-      return {
+      
+      const userInfo = {
         loginName: user.sAMAccountName,
         displayName: user.displayName,
         email: user.mail,
         distinguished_name: user.dn,
         created_at: user.whenCreated
       };
+      
+      // Cache result for 10 minutes
+      this.cache.set(cacheKey, userInfo, 600);
+      return userInfo;
     } catch (error) {
       try {
-        await this.unbind();
+        await this.unbind(client);
       } catch (unbindError) {
         logger.error('Error during unbind in _getUserInfo:', unbindError);
       }
@@ -340,31 +410,21 @@ export class ADService {
     }
   }
 
-  // Métodos públicos com mutex
+  // Public methods using connection pool
   public async testConnection(): Promise<boolean> {
-    return this.withConnection(async () => {
+    return this.withConnection(async (client) => {
       try {
         logger.debug('Starting connection test');
         
-        // Reinicializar cliente para garantir estado limpo
-        if (this.client) {
-          try {
-            this.client.destroy();
-          } catch (e) {
-            logger.debug('Error destroying client:', e);
-          }
-        }
-        this.initializeClient();
-        
-        await this.bind();
+        await this.bind(client);
         logger.debug('Bind successful, testing unbind');
-        await this.unbind();
+        await this.unbind(client);
         logger.debug('Connection test completed successfully');
         return true;
       } catch (error) {
         logger.error('AD connection test failed:', error);
         try {
-          await this.unbind();
+          await this.unbind(client);
         } catch (unbindError) {
           logger.error('Error during unbind in testConnection:', unbindError);
         }
@@ -374,43 +434,41 @@ export class ADService {
   }
 
   public async userExists(loginName: string): Promise<boolean> {
-    return this.withConnection(async () => {
-      return this._userExists(loginName);
+    return this.withConnection(async (client) => {
+      return this._userExists(client, loginName);
     });
   }
 
   public async getUserInfo(loginName: string): Promise<UserInfo | null> {
-    return this.withConnection(async () => {
-      return this._getUserInfo(loginName);
+    return this.withConnection(async (client) => {
+      return this._getUserInfo(client, loginName);
     });
   }
 
   public async createUser(userData: UserCreateRequest): Promise<UserInfo> {
-    logger.info(`🚀 Iniciando criação de usuário: ${userData.loginName}`);
-    logger.info(`Dados recebidos: ${JSON.stringify({ firstName: userData.firstName, lastName: userData.lastName, loginName: userData.loginName })}`);
+    logger.info(`🚀 Starting user creation: ${userData.loginName}`);
     
-    return this.withConnection(async () => {
+    return this.withConnection(async (client) => {
       try {
-        logger.info(`🔍 Verificando se usuário ${userData.loginName} já existe...`);
+        logger.info(`🔍 Checking if user ${userData.loginName} already exists...`);
         
-        // Verifica se o usuário já existe usando método interno
-        const exists = await this._userExists(userData.loginName);
+        // Check if user already exists using internal method
+        const exists = await this._userExists(client, userData.loginName);
         if (exists) {
-          logger.warn(`❌ Usuário ${userData.loginName} já existe no AD`);
+          logger.warn(`❌ User ${userData.loginName} already exists in AD`);
           throw new UserAlreadyExistsError(userData.loginName);
         }
         
-        logger.info(`✅ Usuário ${userData.loginName} não existe, prosseguindo com criação...`);
+        logger.info(`✅ User ${userData.loginName} doesn't exist, proceeding with creation...`);
         
-        logger.info(`🔐 Fazendo bind com usuário de serviço: ${config.ad.username}`);
-        await this.bind();
-        logger.info(`✅ Bind realizado com sucesso`);
+        await this.bind(client);
+        logger.info(`✅ Bind successful`);
 
-        // Cria o Distinguished Name para o novo usuário
+        // Create Distinguished Name for new user
         const userDN = `CN=${userData.firstName} ${userData.lastName},${config.ad.usersOU}`;
-        logger.info(`📍 DN do usuário: ${userDN}`);
+        logger.info(`📍 User DN: ${userDN}`);
         
-        // Atributos do usuário
+        // User attributes
         const userEntry = {
           objectClass: ['top', 'person', 'organizationalPerson', 'user'],
           cn: `${userData.firstName} ${userData.lastName}`,
@@ -421,22 +479,18 @@ export class ADService {
           userPrincipalName: `${userData.loginName}@${config.ad.domain}`,
           mail: `${userData.loginName}@${config.ad.domain}`,
           unicodePwd: Buffer.from(`"${userData.password}"`, 'utf16le'),
-          userAccountControl: 512 // Conta normal habilitada
+          userAccountControl: 512 // Normal enabled account
         };
 
-        logger.info(`📋 Atributos do usuário preparados`);
-        logger.info(`👤 sAMAccountName: ${userEntry.sAMAccountName}`);
-        logger.info(`📧 userPrincipalName: ${userEntry.userPrincipalName}`);
-        logger.info(`🏢 OU de destino: ${config.ad.usersOU}`);
+        logger.info(`📋 User attributes prepared`);
 
-        // Adiciona o usuário
-        logger.info(`➕ Adicionando usuário ao AD...`);
-        await this.addUser(userDN, userEntry);
-        logger.info(`✅ Usuário adicionado com sucesso ao AD`);
+        // Add user to AD
+        logger.info(`➕ Adding user to AD...`);
+        await this.addUser(client, userDN, userEntry);
+        logger.info(`✅ User added successfully to AD`);
         
-        logger.info(`🔓 Fazendo unbind da conexão...`);
-        await this.unbind();
-        logger.info(`✅ Unbind realizado com sucesso`);
+        await this.unbind(client);
+        logger.info(`✅ Unbind successful`);
 
         const userInfo = {
           loginName: userData.loginName,
@@ -446,42 +500,37 @@ export class ADService {
           created_at: new Date()
         };
 
-        logger.info(`🎉 Usuário ${userData.loginName} criado com sucesso!`);
-        logger.info(`📊 Informações do usuário: ${JSON.stringify(userInfo)}`);
+        // Invalidate relevant cache entries
+        this.cache.del(`user_exists_${userData.loginName}`);
+        this.cache.del(`user_info_${userData.loginName}`);
 
-        // Retorna informações do usuário criado
+        logger.info(`🎉 User ${userData.loginName} created successfully!`);
         return userInfo;
 
       } catch (error) {
-        logger.error(`❌ Erro durante criação do usuário ${userData.loginName}:`, error);
+        logger.error(`❌ Error during user creation ${userData.loginName}:`, error);
         
         try {
-          await this.unbind();
-          logger.info(`🔓 Unbind de emergência realizado`);
+          await this.unbind(client);
         } catch (unbindError) {
-          logger.error(`❌ Erro durante unbind de emergência:`, unbindError);
+          logger.error(`❌ Error during emergency unbind:`, unbindError);
         }
         
         if (error instanceof UserAlreadyExistsError) {
           throw error;
         }
         
-        throw new UserCreationError(`Erro ao criar usuário: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+        throw new UserCreationError(`Error creating user: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     });
   }
 
-  private async addUser(dn: string, entry: any): Promise<void> {
+  private async addUser(client: ldap.Client, dn: string, entry: any): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.client) {
-        reject(new ADConnectionError('Cliente LDAP não inicializado'));
-        return;
-      }
-
-      this.client.add(dn, entry, (err) => {
+      client.add(dn, entry, (err) => {
         if (err) {
-          logger.error('LDAP add error:', err);
-          reject(new UserCreationError(`Erro ao adicionar usuário: ${err.message}`));
+          logger.error('LDAP add error:', { error: err.message });
+          reject(new UserCreationError(`Error adding user: ${err.message}`));
         } else {
           logger.info(`User added successfully: ${dn}`);
           resolve();
@@ -521,33 +570,39 @@ export class ADService {
   }
 
   public async suggestUsername(firstName: string, lastName: string): Promise<string> {
-    return this.withConnection(async () => {
+    // Check cache first
+    const cacheKey = `username_suggestion_${firstName.toLowerCase()}_${lastName.toLowerCase()}`;
+    const cached = this.cache.get<string>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    return this.withConnection(async (client) => {
       const baseUsername = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
       let username = baseUsername;
       let counter = 1;
 
-      // Usa método interno para evitar deadlock
-      while (await this._userExists(username)) {
+      // Use internal method to avoid deadlock
+      while (await this._userExists(client, username)) {
         username = `${baseUsername}${counter}`;
         counter++;
         
-        // Limita a busca para evitar loop infinito
+        // Limit search to avoid infinite loop
         if (counter > 999) {
-          throw new Error('Não foi possível gerar um nome de usuário único');
+          throw new Error('Could not generate a unique username');
         }
       }
 
+      // Cache suggestion for 1 hour
+      this.cache.set(cacheKey, username, 3600);
       return username;
     });
   }
 
   public async destroy(): Promise<void> {
     try {
-      await this.unbind();
-      if (this.client) {
-        this.client.destroy();
-        this.client = null;
-      }
+      await this.connectionPool.destroy();
+      this.cache.flushAll();
     } catch (error) {
       logger.error('Error destroying AD service:', error);
     }

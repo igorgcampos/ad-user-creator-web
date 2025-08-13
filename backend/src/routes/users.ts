@@ -156,7 +156,7 @@ router.post('/force-reset',
     logger.warn('🚨 Rota de reset de emergência chamada');
     
     try {
-      adService.forceReset();
+      await adService.forceReset();
       
       const response = {
         success: true,

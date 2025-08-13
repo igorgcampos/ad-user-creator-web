@@ -6,15 +6,15 @@
 FROM node:18-alpine as builder
 
 # Configurações de build
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV GENERATE_SOURCEMAP=false
 
 # Instala dependências do sistema
 RUN apk add --no-cache curl
 
 # Cria usuário não-root
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+RUN addgroup -g 1001 -S app
+RUN adduser -S app -u 1001 -G app
 
 # Define diretório de trabalho
 WORKDIR /app
@@ -29,7 +29,7 @@ COPY index.html ./
 COPY components.json ./
 
 # Instala TODAS as dependências (incluindo dev para build)
-RUN npm ci --silent
+RUN npm ci --include=dev --silent
 
 # Copia código fonte
 COPY src/ ./src/
@@ -46,8 +46,8 @@ FROM node:18-alpine as development
 RUN apk add --no-cache curl
 
 # Cria usuário não-root
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+RUN addgroup -g 1001 -S app
+RUN adduser -S app -u 1001 -G app
 
 # Define diretório de trabalho
 WORKDIR /app
@@ -69,7 +69,7 @@ COPY src/ ./src/
 COPY public/ ./public/
 
 # Muda para usuário não-root
-USER nextjs
+USER app
 
 # Expõe porta de desenvolvimento
 EXPOSE 3000
@@ -78,21 +78,27 @@ EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 # =============================================================================
-# Stage 3: Production stage - Serve arquivos estáticos
+# Stage 3: Production stage - Nginx serve estáticos e faz proxy
 FROM nginx:alpine as production
 
-# Copia arquivos buildados
+# Instala curl para health check
+RUN apk add --no-cache curl
+
+# Remove configuração padrão do nginx
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copia arquivos buildados para diretório do nginx
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copia configuração customizada do Nginx
-COPY nginx.frontend.conf /etc/nginx/conf.d/default.conf
+# Copia configuração customizada do nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expõe porta
 EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:80 || exit 1
+    CMD curl -f http://localhost/health || exit 1
 
-# Comando padrão
+# Comando para iniciar nginx
 CMD ["nginx", "-g", "daemon off;"]

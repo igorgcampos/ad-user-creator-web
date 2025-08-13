@@ -95,8 +95,8 @@ export const UserCreationForm = () => {
     setIsLoading(true);
 
     try {
-      // Chamada da API real do backend
-      const apiUrl = 'http://localhost:8000';
+      // Chamada da API - usa proxy do Nginx quando em produção
+      const apiUrl = '';
       const response = await fetch(`${apiUrl}/api/v1/users/create`, {
         method: 'POST',
         headers: {
