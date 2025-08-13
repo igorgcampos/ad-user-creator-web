@@ -14,10 +14,14 @@ Sistema completo para criação de usuários no Active Directory com frontend Re
 ### Backend
 - **API REST**: Express.js com TypeScript
 - **Integração LDAP Real**: ldapjs para conexão direta ao Active Directory
+- **Connection Pool**: Pool de conexões LDAP com até 10 conexões simultâneas
+- **Circuit Breaker**: Proteção contra falhas em cascata com recuperação automática
+- **Cache Layer**: Cache inteligente com TTL para melhor performance
+- **LDAP Injection Prevention**: Sanitização de entrada para prevenir ataques LDAP
 - **Validação Robusta**: Joi para validação de dados
-- **Logging Estruturado**: Winston com logs em arquivo
-- **Tratamento de Erros**: Tratamento personalizado de exceções
-- **Segurança**: Helmet, CORS, Rate Limiting
+- **Logging Estruturado**: Winston com rotação diária e logs seguros
+- **Tratamento de Erros**: Tratamento personalizado de exceções com recovery automático
+- **Segurança**: Helmet, CORS, Rate Limiting, Input Sanitization
 
 ### Infraestrutura
 - **Docker**: Containerização completa com multi-stage builds
@@ -36,6 +40,9 @@ Sistema completo para criação de usuários no Active Directory com frontend Re
 ### Backend
 - Express.js + TypeScript
 - ldapjs (cliente LDAP)
+- async-mutex (controle de concorrência)
+- node-cache (caching layer)
+- winston-daily-rotate-file (rotação de logs)
 - Joi (validação)
 - Winston (logging)
 - Helmet (segurança)
@@ -93,15 +100,16 @@ make up
 Configure o Security Group da EC2 para permitir:
 
 - Porta 22 (SSH)
-- Porta 3000 (Frontend)
-- Porta 8000 (Backend)
+- Porta 8082 (Frontend)
 - Porta 80 (HTTP) - opcional
+
+**Nota**: O backend roda internamente na rede Docker e não precisa de porta externa.
 
 
 ### **🌐 URLs da Aplicação**
-- **Frontend**: http://44.222.181.172:3000
-- **Backend**: http://44.222.181.172:8000
-- **Health Check**: http://44.222.181.172:8000/health
+- **Frontend**: http://44.222.181.172:8082
+- **Backend**: Interno (acesso via frontend)
+- **Health Check**: Interno (monitoramento automático)
 
 ## 🔧 Desenvolvimento Local
 
@@ -129,9 +137,9 @@ make up-dev
 
 
 4. **Acesse a aplicação:**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- Health Check: http://localhost:8000/health
+- Frontend: http://localhost:8082
+- Backend API: Interno (acessível via Docker network)
+- Health Check: Monitoramento automático via Docker healthcheck
 
 ## 📡 Endpoints da API
 
@@ -183,7 +191,8 @@ PASSWORD_REQUIRE_NUMBERS=true
 PASSWORD_REQUIRE_SPECIAL=true
 
 # Frontend (já configurado para EC2)
-REACT_APP_API_URL=http://44.222.181.172:8000
+FRONTEND_PORT=8082
+REACT_APP_API_URL=http://backend:8000
 
 
 ## 📁 Estrutura do Projeto
@@ -250,19 +259,27 @@ make test
 
 ## 🔒 Segurança
 
-- Validação de entrada com Joi
-- Middleware Helmet para headers de segurança
-- CORS configurado apropriadamente
-- Rate limiting configurável
-- Headers de segurança via Nginx
-- Usuário não-root nos containers
+- **Input Sanitization**: Prevenção de LDAP Injection com escape de caracteres especiais
+- **Credential Security**: Logs sanitizados sem exposição de credenciais
+- **Connection Pool Security**: Gerênciamento seguro de conexões com cleanup automático
+- **Circuit Breaker**: Proteção contra ataques DoS e falhas em cascata
+- **Validação de entrada**: Joi com schemas rigorosos
+- **Middleware Helmet**: Headers de segurança completos
+- **CORS configurado**: Apropriadamente para diferentes ambientes
+- **Rate limiting**: Configurável por endpoint
+- **Headers de segurança**: Via Nginx
+- **Usuário não-root**: Nos containers Docker
 
 ## 📊 Monitoramento
 
-- Health checks automáticos
-- Logs estruturados em arquivos
-- Métricas de performance via Nginx
-- Rotação de logs configurada
+- **Health checks automáticos**: Docker healthcheck integrado
+- **Circuit Breaker Metrics**: Monitoramento de falhas e recuperação
+- **Connection Pool Monitoring**: Métricas de uso do pool de conexões
+- **Cache Performance**: Estatísticas de hit/miss do cache
+- **Logs estruturados**: JSON format com rotação diária
+- **Log Rotation**: Rotação automática por tamanho (20MB) e tempo (14 dias)
+- **Métricas de performance**: Via Nginx
+- **Error Recovery Tracking**: Logs de recuperação automática
 
 ## 🚨 Tratamento de Erros
 
@@ -293,10 +310,14 @@ A API retorna códigos de status apropriados:
 - Sugestões alternativas se necessário
 
 ### Conexão LDAP
-- Teste de conectividade
-- Autenticação segura
-- Timeout configurável
-- Reconexão automática
+- **Connection Pooling**: Pool de até 10 conexões simultâneas
+- **Circuit Breaker**: Proteção contra falhas com recuperação automática
+- **Cache Layer**: Cache inteligente para operações frequentes (5-10 min TTL)
+- **LDAP Injection Prevention**: Sanitização completa de inputs
+- **Teste de conectividade**: Health checks contínuos
+- **Autenticação segura**: Credenciais protegidas
+- **Timeout configurável**: Controle fino de timeouts
+- **Reconexão automática**: Recovery inteligente de falhas
 
 ## 🔧 Troubleshooting
 
@@ -334,8 +355,11 @@ docker-compose logs -f
 
 ### **Configuração LDAP:**
 
-# Teste de conexão LDAP
-curl http://localhost:8000/api/v1/users/connection-test
+# Teste de conexão LDAP (via container)
+docker-compose exec backend curl http://localhost:8000/api/v1/users/connection-test
+
+# Ou via frontend
+curl http://localhost:8082 # Frontend deve estar conectado ao backend
 
 # Verificar configuração
 docker-compose exec backend printenv | grep AD_
@@ -368,6 +392,9 @@ Para suporte, abra uma issue no GitHub ou entre em contato.
 - **Helmet** - Middleware de segurança
 - **CORS** - Cross-origin resource sharing
 - **express-rate-limit** - Rate limiting
+- **async-mutex** - Controle de concorrência thread-safe
+- **node-cache** - Caching para performance
+- **winston-daily-rotate-file** - Rotação automática de logs
 
 ### Frontend
 - **React** - Biblioteca UI

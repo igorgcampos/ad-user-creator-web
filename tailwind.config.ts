@@ -106,11 +106,13 @@ export default {
 			},
 			backgroundImage: {
 				'gradient-admin': 'var(--gradient-admin)',
-				'gradient-card': 'var(--gradient-card)'
+				'gradient-card': 'var(--gradient-card)',
+				'gradient-background': 'var(--gradient-background)'
 			},
 			boxShadow: {
 				'admin': 'var(--shadow-admin)',
-				'card-admin': 'var(--shadow-card)'
+				'card-admin': 'var(--shadow-card)',
+				'card-hover': 'var(--shadow-card-hover)'
 			}
 		}
 	},

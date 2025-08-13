@@ -46,26 +46,21 @@ All colors MUST be HSL.
     
     --gradient-admin: linear-gradient(135deg, hsl(0 96% 49%), hsl(0 75% 35%));
     --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(210 20% 98%));
+    --gradient-background: linear-gradient(135deg, hsl(220 15% 97%), hsl(210 20% 99%));
     
     --shadow-admin: 0 10px 30px -5px hsl(0 96% 49% / 0.2);
     --shadow-card: 0 4px 20px -4px hsl(0 96% 49% / 0.1);
+    --shadow-card-hover: 0 8px 30px -8px hsl(0 96% 49% / 0.15);
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
@@ -79,8 +74,8 @@ All colors MUST be HSL.
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 0 96% 49%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -96,7 +91,24 @@ All colors MUST be HSL.
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 0 96% 49%;
+    
+    --admin-primary: 0 96% 49%;
+    --admin-primary-foreground: 0 0% 100%;
+    --admin-secondary: 217.2 32.6% 17.5%;
+    --admin-accent: 0 75% 88%;
+    --admin-success: 142 71% 45%;
+    --admin-warning: 38 92% 50%;
+    --admin-error: 0 84% 60%;
+    
+    --gradient-admin: linear-gradient(135deg, hsl(0 96% 49%), hsl(0 75% 35%));
+    --gradient-card: linear-gradient(145deg, hsl(222.2 84% 4.9%), hsl(217.2 32.6% 17.5%));
+    --gradient-background: linear-gradient(135deg, hsl(222.2 84% 4.9%), hsl(217.2 32.6% 8%));
+    
+    --shadow-admin: 0 10px 30px -5px hsl(0 96% 49% / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(0 96% 49% / 0.2);
+    --shadow-card-hover: 0 8px 30px -8px hsl(0 96% 49% / 0.25);
+    
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -114,6 +126,89 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background: var(--gradient-background);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .form-field-wrapper {
+    @apply space-y-2 transition-all duration-200;
+  }
+  
+  .form-field-wrapper:focus-within {
+    @apply transform scale-[1.01];
+  }
+  
+  .input-enhanced {
+    @apply transition-all duration-200 focus:shadow-lg focus:scale-[1.02];
+  }
+  
+  .card-enhanced {
+    @apply transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
+  }
+  
+  .loading-skeleton {
+    @apply animate-pulse bg-muted/50 rounded;
+  }
+  
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    .form-field-wrapper:focus-within {
+      @apply scale-100;
+    }
+    
+    .input-enhanced:focus {
+      @apply scale-100;
+    }
+    
+    .card-enhanced:hover {
+      @apply translate-y-0;
+    }
+  }
+  
+  /* Smooth animations for better UX */
+  .slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+  
+  .fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+  
+  @keyframes slideUp {
+    from {
+      transform: translateY(1rem);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes scaleIn {
+    from {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 }

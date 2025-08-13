@@ -1,7 +1,7 @@
-import { UserCreationForm } from '@/components/UserCreationForm';
+import { UserCreationFormSimple } from '@/components/UserCreationFormSimple';
 
 const Index = () => {
-  return <UserCreationForm />;
+  return <UserCreationFormSimple />;
 };
 
 export default Index;
